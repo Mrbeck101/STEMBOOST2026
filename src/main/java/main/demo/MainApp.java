@@ -10,7 +10,7 @@ public class MainApp extends Application {
 
         SceneRouter router = new SceneRouter(stage);
 
-        stage.setTitle("My App");
+        stage.setTitle("STEMBOOST");
         stage.setScene(LoginView.create(router));
         stage.show();
     }

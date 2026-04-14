@@ -1,6 +1,7 @@
 package UserFactory;
 
 import DatabaseController.dbConnector;
+import OtherComponents.AccountType;
 import OtherComponents.Assessment;
 import OtherComponents.InboxHandler;
 import OtherComponents.Message;
@@ -10,15 +11,7 @@ import java.util.List;
 abstract class User {
     private int id;
     private String name;
-
-    private enum acctType {
-        Student,
-        Educator,
-        Employer,
-        Parent,
-        University,
-        Counselor
-    };
+    private AccountType acctType;
 
     private String contactInfo;
     private dbConnector DB = new dbConnector();
