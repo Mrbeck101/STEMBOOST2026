@@ -8,7 +8,6 @@ public class Message {
     private String subject;
     private String content;
 
-
     public Message(int senderID, int receiverID, String subject, String content) {
         this.senderID = senderID;
         this.receiverID = receiverID;

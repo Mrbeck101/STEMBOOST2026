@@ -10,6 +10,7 @@ module main.demo {
     requires org.kordamp.bootstrapfx.core;
     requires eu.hansolo.tilesfx;
     requires java.sql;
+    requires atlantafx.base;
 
     opens main.demo to javafx.fxml;
     exports main.demo;

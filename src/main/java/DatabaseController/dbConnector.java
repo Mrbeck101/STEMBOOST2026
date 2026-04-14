@@ -150,6 +150,26 @@ public class dbConnector {
             return false;
         }
     }
+
+//    public String searchAccountDB(int id, String queryType) {
+//        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
+//            if (queryType.equals("student")) {
+//                String sql = "SELECT  FROM accounts WHERE email=?";
+//                PreparedStatement ps = conn.prepareStatement(sql);
+//                ps.setString(1, data);
+//                ResultSet rs = ps.executeQuery();
+//
+//                if (!rs.next()) return "Not Found";
+//
+//                return CryptoUtil.decrypt(rs.getString("password"));
+//            }
+//
+//            return "Not Found";
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//            return "Not Found";
+//        }
+//    }
 }
 
 

@@ -1,64 +1,66 @@
 package UI;
 
 import Services.AuthService;
+import atlantafx.base.theme.PrimerDark; // AtlantaFX theme
 import javafx.geometry.*;
 import javafx.scene.*;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
+import javafx.application.Application;
 
 public class LoginView {
 
     public static Scene create(SceneRouter router) {
 
+        // Apply AtlantaFX theme
+        Application.setUserAgentStylesheet(new PrimerDark().getUserAgentStylesheet());
+
+
         StackPane root = new StackPane();
-        root.setStyle("-fx-background-color: linear-gradient(to bottom right, #0f172a, #1e293b);");
+        root.getStyleClass().add("root");
 
-        VBox card = new VBox(15);
-        card.setAlignment(Pos.CENTER);
-        card.setMaxWidth(400);
+        VBox card = new VBox(18);
+        card.setAlignment(Pos.CENTER_LEFT);
+        card.setMaxWidth(420);
         card.setPadding(new Insets(40));
-        card.setStyle("-fx-background-color: #111827; -fx-background-radius: 12;");
+        card.getStyleClass().add("card");
 
-        Label appTitle = new Label("Stemboost");
-        appTitle.setStyle("-fx-text-fill: #60a5fa; -fx-font-size: 32px; -fx-font-weight: bold;");
-        appTitle.setAccessibleText("Stemboost application");
+        Label appTitle = new Label("STEMBOOST");
+        appTitle.getStyleClass().add("title");
+        appTitle.setMaxWidth(Double.MAX_VALUE);
+        appTitle.setAlignment(Pos.CENTER); // centers text
+        appTitle.setAccessibleText("Stemboost application title");
 
-        Label subtitle = new Label("Login");
-        subtitle.setStyle("-fx-text-fill: white; -fx-font-size: 20px;");
+        Label subtitle = new Label("Login to your account");
+        subtitle.getStyleClass().add("subtitle");
 
         // Email
         Label emailLabel = new Label("Email");
-        emailLabel.setStyle("-fx-text-fill: white;");
         TextField emailField = new TextField();
         emailField.setPromptText("Enter your email");
-        emailField.setPrefHeight(40);
         emailLabel.setLabelFor(emailField);
         emailField.setAccessibleText("Email input field");
 
         // Password
         Label passwordLabel = new Label("Password");
-        passwordLabel.setStyle("-fx-text-fill: white;");
         PasswordField passwordField = new PasswordField();
         passwordField.setPromptText("Enter your password");
-        passwordField.setPrefHeight(40);
         passwordLabel.setLabelFor(passwordField);
         passwordField.setAccessibleText("Password input field");
 
         Button loginBtn = new Button("Login");
         loginBtn.setMaxWidth(Double.MAX_VALUE);
-        loginBtn.setDefaultButton(true); // ENTER key support
+        loginBtn.setDefaultButton(true);
 
-        Label registerLink = new Label("Press Enter to Register if you do not have an account");
-        registerLink.setStyle("-fx-text-fill: #93c5fd;");
-        registerLink.setFocusTraversable(true);
+        Hyperlink registerLink = new Hyperlink("Create an account");
+        registerLink.setAccessibleText("Go to registration page");
 
         Label error = new Label();
-        error.setStyle("-fx-text-fill: #f87171;");
+        error.getStyleClass().add("error-label");
         error.setWrapText(true);
-        error.setAccessibleText("Error message");
 
-        // Action logic
+        // 🔐 Login logic
         Runnable loginAction = () -> {
             boolean success = AuthService.login(
                     emailField.getText(),
@@ -67,38 +69,50 @@ public class LoginView {
 
             if (success) {
                 router.goToDashboard();
-                System.out.println("Successfully logged in");
             } else {
                 error.setText("Invalid email or password");
-                System.out.println("Invalid email & password");
-                error.requestFocus(); // announce error
+                error.requestFocus(); // screen reader announces error
             }
         };
 
         loginBtn.setOnAction(e -> loginAction.run());
 
-        // ENTER key navigation
-        emailField.setOnKeyPressed(e -> {
-            if (e.getCode() == KeyCode.ENTER) {
-                passwordField.requestFocus();
-            }
-        });
+        // KEYBOARD NAVIGATION (Tab already works automatically)
 
-        passwordField.setOnKeyPressed(e -> {
-            if (e.getCode() == KeyCode.ENTER) {
-                loginAction.run();
-            }
-        });
+        // Arrow navigation helper
+        Control[] order = {
+                emailField,
+                passwordField,
+                loginBtn,
+                registerLink
+        };
 
-        registerLink.setOnKeyPressed(e -> {
-            if (e.getCode() == KeyCode.ENTER) {
-                router.goToRegister();
-            }
-        });
+        for (int i = 0; i < order.length; i++) {
+            final int index = i;
 
-        registerLink.setOnMouseClicked(e -> router.goToRegister());
+            order[i].setOnKeyPressed(e -> {
+                if (e.getCode() == KeyCode.DOWN) {
+                    if (index < order.length - 1) {
+                        order[index + 1].requestFocus();
+                    }
+                } else if (e.getCode() == KeyCode.UP) {
+                    if (index > 0) {
+                        order[index - 1].requestFocus();
+                    }
+                }
+            });
+        }
 
-        // Focus order
+        // ENTER behavior
+        emailField.setOnAction(e -> passwordField.requestFocus());
+        passwordField.setOnAction(e -> loginAction.run());
+
+        registerLink.setOnAction(e -> router.goToRegister());
+
+        // Layout
+        VBox.setMargin(loginBtn, new Insets(10, 0, 0, 0));
+        VBox.setMargin(registerLink, new Insets(5, 0, 0, 0));
+
         card.getChildren().addAll(
                 appTitle,
                 subtitle,
@@ -111,10 +125,13 @@ public class LoginView {
 
         root.getChildren().add(card);
 
-        Scene scene = new Scene(root, 1980, 1080);
+        Scene scene = new Scene(root, 1280, 800);
 
-//        // Set initial focus
-//        scene.setOnShown(e -> emailField.requestFocus());
+        scene.getStylesheets().add(
+                LoginView.class.getResource("/login_styles.css").toExternalForm()
+        );
+        // Initial focus (important for accessibility)
+        //scene.setOnShown(e -> emailField.requestFocus());
 
         return scene;
     }

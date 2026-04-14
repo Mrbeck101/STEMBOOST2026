@@ -26,7 +26,7 @@ public class CryptoUtil {
         return new String(cipher.doFinal(Base64.getDecoder().decode(encrypted)));
     }
 
-    private static SecretKey fetchKey() throws Exception{
+    private static SecretKey fetchKey() throws Exception {
         Properties props = new Properties();
         props.load(new FileInputStream("db.properties"));
         String keyStr = props.getProperty("db.encryptionKey");

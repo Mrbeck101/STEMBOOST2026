@@ -1,102 +1,92 @@
 package UI;
 
 import Services.AuthService;
+import atlantafx.base.theme.PrimerDark;
 import javafx.geometry.*;
 import javafx.scene.*;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
+import javafx.application.Application;
 
 public class RegisterView {
 
     public static Scene create(SceneRouter router) {
 
-        StackPane root = new StackPane();
-        root.setStyle("-fx-background-color: linear-gradient(to bottom right, #0f172a, #1e293b);");
+        Application.setUserAgentStylesheet(new PrimerDark().getUserAgentStylesheet());
 
-        VBox card = new VBox(15);
-        card.setAlignment(Pos.CENTER);
-        card.setMaxWidth(400);
+        BorderPane root = new BorderPane();
+        root.getStyleClass().add("root");
+
+        // ================= CARD =================
+        VBox card = new VBox(16);
+        card.setAlignment(Pos.TOP_LEFT);
+        card.setMaxWidth(480);
         card.setPadding(new Insets(40));
-        card.setStyle("-fx-background-color: #111827; -fx-background-radius: 12;");
+        card.getStyleClass().add("card");
+        card.setMaxWidth(480);
 
-        Label appTitle = new Label("Stemboost");
-        appTitle.setStyle("-fx-text-fill: #60a5fa; -fx-font-size: 32px; -fx-font-weight: bold;");
+        VBox container = new VBox(card);
+        container.setAlignment(Pos.TOP_CENTER);
+        // ================= SCROLL PANE WRAPPER =================
+        ScrollPane scrollPane = new ScrollPane(container);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        scrollPane.setMaxWidth(Double.MAX_VALUE);
 
-        Label title = new Label("Register");
-        title.setStyle("-fx-text-fill: white; -fx-font-size: 20px;");
+        scrollPane.getStyleClass().add("register-scroll");
 
-        // First Name
-        Label firstNameLabel = new Label("First Name");
-        firstNameLabel.setStyle("-fx-text-fill: white;");
+        // Ensure smooth UX
+        scrollPane.setFocusTraversable(false);
+
+        // ================= HEADER =================
+        Label appTitle = new Label("STEMBOOST");
+        appTitle.getStyleClass().add("title");
+        appTitle.setMaxWidth(Double.MAX_VALUE);
+        appTitle.setAlignment(Pos.CENTER);
+
+        Label title = new Label("Create Account");
+        title.getStyleClass().add("subtitle");
+
+        // ================= FIELDS =================
         TextField firstName = new TextField();
-        firstName.setPrefHeight(40);
-        firstNameLabel.setLabelFor(firstName);
-
-        // Last Name
-        Label lastNameLabel = new Label("Last Name");
-        lastNameLabel.setStyle("-fx-text-fill: white;");
         TextField lastName = new TextField();
-        lastName.setPrefHeight(40);
-        lastNameLabel.setLabelFor(lastName);
 
-        // Account Type
-        Label acctTypeLabel = new Label("Account Type");
-        acctTypeLabel.setStyle("-fx-text-fill: white;");
         ComboBox<String> acctType = new ComboBox<>();
         acctType.getItems().addAll("Educator", "Student", "Parent");
-        acctType.setPrefHeight(40);
         acctType.setMaxWidth(Double.MAX_VALUE);
 
-        // Associated Student ID (only for Parent)
-        Label studentIdLabel = new Label("Associated Student ID");
-        studentIdLabel.setStyle("-fx-text-fill: white;");
         TextField studentId = new TextField();
-        studentId.setPrefHeight(40);
-        studentIdLabel.setLabelFor(studentId);
+        Label studentIdLabel = new Label("Associated Student ID");
 
-        // Hide initially
         studentIdLabel.setVisible(false);
         studentId.setVisible(false);
 
-        // Toggle visibility based on user type
         acctType.setOnAction(e -> {
             boolean isParent = "Parent".equals(acctType.getValue());
             studentIdLabel.setVisible(isParent);
             studentId.setVisible(isParent);
+
+            if (isParent) studentId.requestFocus();
         });
 
-        // Email
-        Label emailLabel = new Label("Email");
-        emailLabel.setStyle("-fx-text-fill: white;");
         TextField email = new TextField();
-        email.setPrefHeight(40);
-        emailLabel.setLabelFor(email);
-
-        // Password
-        Label passwordLabel = new Label("Password");
-        passwordLabel.setStyle("-fx-text-fill: white;");
         PasswordField password = new PasswordField();
-        password.setPrefHeight(40);
-        passwordLabel.setLabelFor(password);
-
-        // Confirm
-        Label confirmLabel = new Label("Confirm Password");
-        confirmLabel.setStyle("-fx-text-fill: white;");
         PasswordField confirm = new PasswordField();
-        confirm.setPrefHeight(40);
-        confirmLabel.setLabelFor(confirm);
 
-        Button registerBtn = new Button("Register");
+        Button registerBtn = new Button("Create Account");
         registerBtn.setMaxWidth(Double.MAX_VALUE);
         registerBtn.setDefaultButton(true);
 
+        Hyperlink backToLogin = new Hyperlink("Back to login");
+
         Label error = new Label();
-        error.setStyle("-fx-text-fill: #f87171;");
+        error.getStyleClass().add("error-label");
         error.setWrapText(true);
 
+        // ================= LOGIC =================
         Runnable registerAction = () -> {
-
             if (!password.getText().equals(confirm.getText())) {
                 error.setText("Passwords do not match");
                 error.requestFocus();
@@ -120,49 +110,79 @@ public class RegisterView {
         };
 
         registerBtn.setOnAction(e -> registerAction.run());
+        backToLogin.setOnAction(e -> router.goToLogin());
 
-        // Keyboard navigation
-        firstName.setOnKeyPressed(e -> {
-            if (e.getCode() == KeyCode.ENTER) lastName.requestFocus();
+        // ================= KEYBOARD NAV =================
+        Control[] order = {
+                firstName,
+                lastName,
+                acctType,
+                studentId,
+                email,
+                password,
+                confirm,
+                registerBtn,
+                backToLogin
+        };
+
+        for (int i = 0; i < order.length; i++) {
+            final int index = i;
+
+            order[i].setOnKeyPressed(e -> {
+                if (e.getCode() == KeyCode.DOWN) {
+                    if (index < order.length - 1) {
+                        order[index + 1].requestFocus();
+                    }
+                } else if (e.getCode() == KeyCode.UP) {
+                    if (index > 0) {
+                        order[index - 1].requestFocus();
+                    }
+                }
+            });
+        }
+
+        firstName.setOnAction(e -> lastName.requestFocus());
+        lastName.setOnAction(e -> acctType.requestFocus());
+        email.setOnAction(e -> password.requestFocus());
+        password.setOnAction(e -> confirm.requestFocus());
+        confirm.setOnAction(e -> registerAction.run());
+
+        acctType.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.ENTER && acctType.getValue() != null) {
+                email.requestFocus();
+            }
         });
 
-        lastName.setOnKeyPressed(e -> {
-            if (e.getCode() == KeyCode.ENTER) acctType.requestFocus();
-        });
-
-        email.setOnKeyPressed(e -> {
-            if (e.getCode() == KeyCode.ENTER) password.requestFocus();
-        });
-
-        password.setOnKeyPressed(e -> {
-            if (e.getCode() == KeyCode.ENTER) confirm.requestFocus();
-        });
-
-        confirm.setOnKeyPressed(e -> {
-//            if (e.getCode() == KeyCode.ENTER) registerAction.run();
-        });
-
+        // ================= LAYOUT =================
         card.getChildren().addAll(
                 appTitle,
                 title,
 
-                firstNameLabel, firstName,
-                lastNameLabel, lastName,
+                new Label("First Name"), firstName,
+                new Label("Last Name"), lastName,
 
-                acctTypeLabel, acctType,
+                new Label("Account Type"), acctType,
+
                 studentIdLabel, studentId,
 
-                emailLabel, email,
-                passwordLabel, password,
-                confirmLabel, confirm,
+                new Label("Email"), email,
+                new Label("Password"), password,
+                new Label("Confirm Password"), confirm,
 
                 registerBtn,
+                backToLogin,
                 error
         );
 
-        root.getChildren().add(card);
+        root.setCenter(scrollPane);
 
-        Scene scene = new Scene(root, 1980, 1080);
+
+        Scene scene = new Scene(root, 1280, 800);
+
+        scene.getStylesheets().add(
+                RegisterView.class.getResource("/register_styles.css").toExternalForm()
+        );
+        //scene.setOnShown(e -> firstName.requestFocus());
 
         return scene;
     }

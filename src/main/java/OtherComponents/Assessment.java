@@ -1,7 +1,7 @@
 package OtherComponents;
 
 public class Assessment {
-    private int moduleID;
+    private final int moduleID;
     private int grade;
     private LearningPath lp;
 
