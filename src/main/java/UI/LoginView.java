@@ -2,6 +2,7 @@ package UI;
 
 import Services.AuthService;
 import atlantafx.base.theme.PrimerDark; // AtlantaFX theme
+import eu.hansolo.toolbox.tuples.Pair;
 import javafx.geometry.*;
 import javafx.scene.*;
 import javafx.scene.control.*;
@@ -60,15 +61,15 @@ public class LoginView {
         error.getStyleClass().add("error-label");
         error.setWrapText(true);
 
-        // 🔐 Login logic
+        // Login logic
         Runnable loginAction = () -> {
-            boolean success = AuthService.login(
+            Pair<Integer, String> results = AuthService.login(
                     emailField.getText(),
                     passwordField.getText()
             );
 
-            if (success) {
-                router.goToDashboard();
+            if (results.getA() != -1) {
+                router.goToDashboard(results.getA());
             } else {
                 error.setText("Invalid email or password");
                 error.requestFocus(); // screen reader announces error

@@ -1,19 +1,26 @@
 package OtherComponents;
 
 public class Assessment {
+    private final int assessmentID;
     private final int moduleID;
     private int grade;
-    private LearningPath lp;
+    private String content;
+    private final String learningPath;
 
 
-    public Assessment(int moduleID, int grade, LearningPath lp) {
+    public Assessment(int assessmentID, int moduleID, int grade, String lp, String content) {
+        this.assessmentID = assessmentID;
         this.moduleID = moduleID;
+        this.learningPath = lp;
         this.grade = grade;
-        this.lp  = lp;
+        this.content = content;
     }
 
-    public LearningPath getLearningPath() {
-        return lp;
+    public int getAssessmentID() {
+        return this.assessmentID;
+    }
+    public String getLearningPath() {
+        return this.learningPath;
     }
 
     public int getGrade() {
@@ -26,5 +33,13 @@ public class Assessment {
 
     public void setGrade(int grade) {
         this.grade = grade;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public void setContent(String content) {
+        this.content = content;
     }
 }

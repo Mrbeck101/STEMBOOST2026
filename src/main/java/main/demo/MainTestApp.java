@@ -2,6 +2,8 @@ package main.demo;
 import OtherComponents.InboxHandler;
 import OtherComponents.Message;
 import DatabaseController.dbConnector;
+import UserFactory.Student;
+
 public class MainTestApp {
 
     public static void messageTest() {
@@ -25,8 +27,17 @@ public class MainTestApp {
 
     }
 
+    public static void initializeStudentTest() {
+        try {
+            Student Jamar = new Student(1);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public static void main(String[] args) {
-        messageTest();
+        //messageTest();
+        initializeStudentTest();
     }
 
 }

@@ -11,6 +11,7 @@ module main.demo {
     requires eu.hansolo.tilesfx;
     requires java.sql;
     requires atlantafx.base;
+    requires com.google.gson;
 
     opens main.demo to javafx.fxml;
     exports main.demo;

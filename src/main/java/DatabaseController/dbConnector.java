@@ -1,9 +1,14 @@
 package DatabaseController;
 
+import OtherComponents.Assessment;
+import OtherComponents.DataAccessException;
+import OtherComponents.LearningModule;
 import OtherComponents.Message;
+import eu.hansolo.toolbox.tuples.Pair;
 
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
 import java.io.FileInputStream;
@@ -69,23 +74,22 @@ public class dbConnector {
         }
     }
 
-    public String searchUserDB(String data, String queryType) {
+    public Pair<Integer, String> searchUserDB(String email, String password) {
         try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
-            if (queryType.equals("password")) {
-                String sql = "SELECT password FROM users WHERE email=?";
-                PreparedStatement ps = conn.prepareStatement(sql);
-                ps.setString(1, data);
-                ResultSet rs = ps.executeQuery();
 
-                if (!rs.next()) return "Not Found";
+            String sql = "SELECT user_id, user_type FROM users WHERE email=? AND password=?";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setString(1, email);
+            ps.setString(2, CryptoUtil.encrypt(password));
+            ResultSet rs = ps.executeQuery();
 
-                return CryptoUtil.decrypt(rs.getString("password"));
-            }
+            if (!rs.next()) new Pair<>(-1, "Not Found");
 
-            return "Not Found";
+            return new Pair<>(rs.getInt("user_id"), rs.getString("user_type"));
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to retrieve user from database", e);
         } catch (Exception e) {
-            e.printStackTrace();
-            return "Not Found";
+            throw new RuntimeException(e);
         }
     }
 
@@ -114,14 +118,12 @@ public class dbConnector {
 
                 return messages;
 
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.out.println("Empty List Returned");
-            return messages;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to retrieve user from database", e);
         }
     }
 
-    public boolean addMessage(Message msg) throws SQLException {
+    public boolean addMessage(Message msg) {
         try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
             String sql;
             PreparedStatement ps = null;
@@ -144,33 +146,242 @@ public class dbConnector {
 
             return ps.executeUpdate() > 0;
 
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.out.println("Empty List Returned");
-            return false;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to retrieve user from database", e);
         }
     }
 
-//    public String searchAccountDB(int id, String queryType) {
-//        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
-//            if (queryType.equals("student")) {
-//                String sql = "SELECT  FROM accounts WHERE email=?";
-//                PreparedStatement ps = conn.prepareStatement(sql);
-//                ps.setString(1, data);
-//                ResultSet rs = ps.executeQuery();
-//
-//                if (!rs.next()) return "Not Found";
-//
-//                return CryptoUtil.decrypt(rs.getString("password"));
-//            }
-//
-//            return "Not Found";
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//            return "Not Found";
-//        }
-//    }
+    public HashMap<String, Object> searchAccountDB(int id, String query) {
+        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
+
+                String sql = "SELECT " + query + " FROM accounts WHERE user_id=?";
+                PreparedStatement ps = conn.prepareStatement(sql);
+                ps.setInt(1, id);
+                ResultSet rs = ps.executeQuery();
+
+                if (rs.next()) {
+                    HashMap<String, Object> data = new HashMap<>();
+
+                    if(query.contains("first_name")) {
+                        data.put("name", rs.getString("first_name") + " " + rs.getString("last_name"));
+                    }
+
+                    if(query.contains("acct_type")) {
+                        data.put("acctType", rs.getString("acct_type"));
+                    }
+
+                    if(query.contains("contact_info")) {
+                        data.put("contactInfo", rs.getString("contact_info"));
+                    }
+
+                    if(query.contains("associated_id")) {
+                        data.put("associatedID", rs.getInt("associated_id"));
+                    }
+
+                    if(query.contains("university")) {
+                        data.put("university", rs.getString("university"));
+                    }
+
+                    if(query.contains("learning_path")) {
+                        data.put("learningPath", rs.getString("learning_path"));
+                    }
+
+                    if(query.contains("assigned_counselor")) {
+                        data.put("counselorID", rs.getInt("assigned_counselor"));
+                    }
+
+                    return data;
+                } else {
+                    return null;
+                }
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to retrieve user from database", e);
+        }
+    }
+
+    public List<LearningModule> searchModulesDB(int id, String userType) {
+        List<LearningModule> modules = new ArrayList<>();
+        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
+            String sql;
+
+            if (userType.equals("Student")) {
+                sql = """
+                    SELECT
+                      p.mod_id,
+                      p.mod_progress,
+                      m.learning_path,
+                      m.educator_id,
+                      m.content,
+                      m.subject
+                    FROM progress p
+                    JOIN modules m
+                      ON p.mod_id = m.mod_id
+                    WHERE p.student_id = ?
+                      AND p.mod_id != -1;
+                """;
+            } else {
+                sql = "SELECT * FROM modules WHERE educator_id=?";
+            }
+
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setInt(1, id);
+            ResultSet rs = ps.executeQuery();
+
+            while (rs.next()) {
+                int modID = rs.getInt("mod_id");
+                int modProgress = userType.equals("Student") ? rs.getInt("mod_progress") : -1;
+                String learningPath = rs.getString("learning_path");
+                int educatorID = rs.getInt("educator_id");
+                String content = rs.getString("content");
+                String subject = rs.getString("subject");
+
+                LearningModule module = new LearningModule(modID, modProgress, educatorID, learningPath, content, subject);
+
+                modules.add(module);
+
+            }
+
+            return modules;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to retrieve modules from database", e);
+        }
+    }
+
+    public List<Assessment> searchAssessmentDB(int id, String userType) {
+        List<Assessment> assessments = new ArrayList<>();
+        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
+            String sql;
+
+            if (userType.equals("Student")) {
+                sql = """
+                    SELECT
+                      p.assessment_id,
+                      p.assessment_grade,
+                      a.learning_path,
+                      a.associated_mod,
+                      a.content
+                    FROM progress p
+                    JOIN assessments a
+                      ON p.assessment_id = a.assessment_id
+                    WHERE p.student_id = ?
+                      AND p.assessment_id != -1;
+                """;
+            } else {
+                sql = """
+                    SELECT
+                      p.assessment_id,
+                      p.assessment_grade,
+                      a.learning_path,
+                      a.associated_mod,
+                      a.content
+                    FROM progress p
+                    JOIN assessments a
+                      ON p.assessment_id = a.assessment_id
+                    WHERE a.associated_mod = ?
+                      AND p.assessment_id != -1;
+                """;
+            }
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setInt(1, id);
+            ResultSet rs = ps.executeQuery();
+
+            while (rs.next()) {
+                int assessmentID = rs.getInt("assessment_id");
+                int grade = rs.getInt("assessment_grade");
+                String learningPath = rs.getString("learning_path");
+                int modID = rs.getInt("associated_mod");
+                String content = rs.getString("content");
+
+
+                Assessment assessment = new Assessment(assessmentID, modID, grade, learningPath, content);
+
+                assessments.add(assessment);
+
+            }
+
+            return assessments;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to retrieve modules from database", e);
+        }
+    }
+
+    public Integer findAvailableCounselor() {
+        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
+            String sql = """
+                SELECT c.user_id
+                FROM accounts c
+                LEFT JOIN counselor_students cs
+                  ON c.user_id = cs.counselor_id
+                WHERE c.acct_type = 'Counselor'
+                GROUP BY c.user_id
+                HAVING COUNT(cs.student_id) < 10
+                ORDER BY COUNT(cs.student_id)
+                LIMIT 1;
+                """;
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ResultSet rs = ps.executeQuery();
+
+            if (rs.next()) {
+                return rs.getInt("user_id");
+            } else {
+                return 0;
+            }
+
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to retrieve user from database", e);
+        }
+    }
+
+    public boolean assignStudent(int student_id, int counselor_id) {
+        Connection conn = null;
+        PreparedStatement insertStmt = null;
+        PreparedStatement updateStmt = null;
+
+        try{
+            conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password);
+            conn.setAutoCommit(false);
+
+            String insertSql = "INSERT INTO counselor_students (counselor_id, student_id) VALUES (?, ?)";
+            String updateSql = "UPDATE accounts SET assigned_counselor = ? WHERE user_id = ?";
+
+            insertStmt = conn.prepareStatement(insertSql);
+            updateStmt = conn.prepareStatement(updateSql);
+
+            // Set INSERT variables
+            insertStmt.setInt(1, counselor_id);
+            insertStmt.setInt(2, student_id);
+            insertStmt.executeUpdate();
+
+            // Set UPDATE variables
+            updateStmt.setInt(1, counselor_id);
+            updateStmt.setInt(2, student_id);
+            updateStmt.executeUpdate();
+
+            // Commit transaction
+            conn.commit();
+            return true;
+
+        } catch (SQLException e) {
+            try {
+                if (conn != null) conn.rollback();
+            } catch (SQLException ex) {
+                throw new RuntimeException(ex);
+            }
+
+            throw new DataAccessException("Failed to retrieve user from database", e);
+        } finally {
+            try {
+                if (insertStmt != null) insertStmt.close();
+                if (updateStmt != null) updateStmt.close();
+                if (conn != null) conn.close();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
 }
+
+
 
 
 

@@ -18,7 +18,7 @@ public class SceneRouter {
         stage.setScene(RegisterView.create(this));
     }
 
-    public void goToDashboard() {
+    public void goToDashboard(int id) {
         stage.setTitle("Dashboard");
         // replace with your main app scene
     }

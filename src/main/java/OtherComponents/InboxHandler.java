@@ -19,7 +19,7 @@ public class InboxHandler {
         this.inbox = DB.searchMessagesDB(this.inboxID);
     }
 
-    public boolean sendMessage(Message message) throws Exception {
+    public boolean sendMessage(Message message) {
         return DB.addMessage(message);
     }
 
@@ -29,6 +29,11 @@ public class InboxHandler {
         int msgCnt = this.inbox.size();
         getMessages();
         return this.inbox.size() > msgCnt;
+    }
+
+    public List<Message> getInbox() {
+        getMessages();
+        return inbox;
     }
 
 }
