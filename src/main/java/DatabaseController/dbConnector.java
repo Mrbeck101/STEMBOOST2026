@@ -1,9 +1,6 @@
 package DatabaseController;
 
-import OtherComponents.Assessment;
-import OtherComponents.DataAccessException;
-import OtherComponents.LearningModule;
-import OtherComponents.Message;
+import OtherComponents.*;
 import eu.hansolo.toolbox.tuples.Pair;
 
 import java.sql.*;
@@ -21,8 +18,6 @@ public class dbConnector {
     private String password;
 
     public dbConnector() {
-
-
         try {
             Properties props = new Properties();
             FileInputStream fis = new FileInputStream("db.properties");
@@ -213,11 +208,10 @@ public class dbConnector {
                       m.educator_id,
                       m.content,
                       m.subject
-                    FROM progress p
+                    FROM module_progress p
                     JOIN modules m
                       ON p.mod_id = m.mod_id
-                    WHERE p.student_id = ?
-                      AND p.mod_id != -1;
+                    WHERE p.student_id = ?;
                 """;
             } else {
                 sql = "SELECT * FROM modules WHERE educator_id=?";
@@ -247,6 +241,129 @@ public class dbConnector {
         }
     }
 
+    public boolean addModuleDB(LearningModule mod) {
+        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
+            String sql = "INSERT INTO modules (educator_id, learning_path, content, subject) VALUES (?, ?, ?, ?)";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setInt(1, mod.getModuleID());
+            ps.setString(2, mod.getLearningPath());
+            ps.setString(3, mod.getContent());
+            ps.setString(4, mod.getSubject());
+
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to add modules to database", e);
+        }
+    }
+
+    public boolean addStudentToModule(int studentID, int modID){
+        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
+            String sql = "INSERT INTO module_progress (student_id, mod_id) VALUES (?, ?)";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setInt(1, studentID);
+            ps.setInt(2, modID);
+
+
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to add modules to database", e);
+        }
+    }
+
+    public boolean addAssessmentDB(int modID, String learningPath, String content){
+        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
+            String sql = "INSERT INTO assessments (associated_mod, learning_path, content) VALUES (?, ?, ?)"; //This has a trigger in the database to automatically assign all students in the associated mod to this assessment
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setInt(1, modID);
+            ps.setString(2, learningPath);
+            ps.setString(3, content);
+
+
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to add modules to database", e);
+        }
+    }
+
+    public boolean addJobProgram(JobProgram job){
+        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
+            String sql = "INSERT INTO jobs (employer_id, learning_path, mod_req, assessment_req, description, job_type) VALUES (?, ?, ?, ?, ?)";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setInt(1, job.getEmployerID());
+            ps.setString(2, job.getPreferredLearningPath());
+            ps.setInt(3, job.getModRequired());
+            ps.setInt(4, job.getAssessmentRequired());
+            ps.setString(5, job.getDescription());
+            ps.setString(5, job.getJobType());
+
+
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to add jobs to database", e);
+        }
+    }
+
+    public boolean updateModuleDB(LearningModule mod) {
+        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
+            String sql = "UPDATE modules SET learning_path = ?, content = ?, subject = ? WHERE mod_id=?";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setInt(4, mod.getModuleID());
+            ps.setString(1, mod.getLearningPath());
+            ps.setString(2, mod.getContent());
+            ps.setString(3, mod.getSubject());
+
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to add modules to database", e);
+        }
+    }
+
+    public boolean updateModuleProgress(int studentID, int modID, int progress) {
+        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
+            String sql = "UPDATE module_progress SET progress = ? WHERE student_id = ? AND mod_id=?";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setInt(1, progress);
+            ps.setInt(2, studentID);
+            ps.setInt(3, modID);
+
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to add modules to database", e);
+        }
+    }
+
+    public boolean updateAssessmentGrade(int studentID, int assessmentID, int grade){
+        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
+            String sql = "UPDATE assassment_progress SET grade = ? WHERE student_id = ? AND assessment_id=?";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setInt(1, grade);
+            ps.setInt(2, studentID);
+            ps.setInt(3, assessmentID);
+
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to add modules to database", e);
+        }
+    }
+
+    public boolean updateJobProgram(JobProgram job){
+        try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
+            String sql = "UPDATE jobs SET learning_path = ?, mod_req = ?, assessment_req = ?, description = ?, job_type = ? WHERE job_id=?";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setInt(6, job.getEmployerID());
+            ps.setString(1, job.getPreferredLearningPath());
+            ps.setInt(2, job.getModRequired());
+            ps.setInt(3, job.getAssessmentRequired());
+            ps.setString(4, job.getDescription());
+            ps.setString(5, job.getJobType());
+
+
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to add jobs to database", e);
+        }
+    }
+
     public List<Assessment> searchAssessmentDB(int id, String userType) {
         List<Assessment> assessments = new ArrayList<>();
         try (Connection conn = DriverManager.getConnection(this.ip + this.dbName, this.user, this.password)) {
@@ -256,29 +373,27 @@ public class dbConnector {
                 sql = """
                     SELECT
                       p.assessment_id,
-                      p.assessment_grade,
+                      p.grade,
                       a.learning_path,
                       a.associated_mod,
                       a.content
-                    FROM progress p
+                    FROM assessment_progress p
                     JOIN assessments a
                       ON p.assessment_id = a.assessment_id
-                    WHERE p.student_id = ?
-                      AND p.assessment_id != -1;
+                    WHERE p.student_id = ?;
                 """;
             } else {
                 sql = """
                     SELECT
                       p.assessment_id,
-                      p.assessment_grade,
+                      p.grade,
                       a.learning_path,
                       a.associated_mod,
                       a.content
-                    FROM progress p
+                    FROM assessment_progress p
                     JOIN assessments a
                       ON p.assessment_id = a.assessment_id
-                    WHERE a.associated_mod = ?
-                      AND p.assessment_id != -1;
+                    WHERE a.associated_mod = ?;
                 """;
             }
             PreparedStatement ps = conn.prepareStatement(sql);

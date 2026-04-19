@@ -26,6 +26,7 @@ abstract class User {
 
 
     public abstract List<Assessment> getAssessmentResults(int... id);
+    protected abstract void initializeUser();
 
 
     public boolean sendMessage(int receiverID, String subject, String content) throws Exception {

@@ -3,15 +3,13 @@ package UserFactory;
 import OtherComponents.Assessment;
 import OtherComponents.LearningModule;
 import com.google.gson.*;
-
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
 public class Student extends User {
     private String university;
-    private final List<Assessment> assessments;
-    private final List<LearningModule> modules;
+    private List<Assessment> assessments;
+    private List<LearningModule> modules;
     private int guardian = -1;
     private String learningPath;
     private int counselorID;
@@ -21,8 +19,11 @@ public class Student extends User {
 
     public Student(int id) {
         super(id, "Student");
+        initializeUser();
+    }
 
-        HashMap<String,Object> profile = DB.searchAccountDB(id, "first_name, last_name, contact_info, associated_id, university, learning_path, assigned_counselor");
+     protected void initializeUser() {
+        HashMap<String,Object> profile = DB.searchAccountDB(super.getId(), "first_name, last_name, contact_info, associated_id, university, learning_path, assigned_counselor");
         super.setName((String) profile.get("name"));
         this.university = (String) profile.get("university");
 
@@ -48,12 +49,8 @@ public class Student extends User {
         super.setPhone(contactJson.get("phone").getAsString());
         super.setAddress(contactJson.get("address").getAsString());
 
-        this.modules = DB.searchModulesDB(id, super.getAcctType());
-        this.assessments = DB.searchAssessmentDB(id, super.getAcctType());
-
-
-
-
+        this.modules = DB.searchModulesDB(super.getId(), super.getAcctType());
+        this.assessments = DB.searchAssessmentDB(super.getId(), super.getAcctType());
 
     }
 
