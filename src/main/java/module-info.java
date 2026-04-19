@@ -14,5 +14,6 @@ module main.demo {
     requires com.google.gson;
 
     opens main.demo to javafx.fxml;
+    opens OtherComponents to com.google.gson;
     exports main.demo;
 }

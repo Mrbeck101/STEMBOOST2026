@@ -1,6 +1,8 @@
 package UI;
 
 import Services.AuthService;
+import UserFactory.*;
+import UserFactory.Parent;
 import atlantafx.base.theme.PrimerDark; // AtlantaFX theme
 import eu.hansolo.toolbox.tuples.Pair;
 import javafx.geometry.*;
@@ -69,7 +71,32 @@ public class LoginView {
             );
 
             if (results.getA() != -1) {
-                router.goToDashboard(results.getA());
+                try {
+                    // Create appropriate user instance based on account type
+                    User user = createUserInstance(results.getA(), results.getB());
+
+                    if (user != null) {
+                        // Store user in persistent context
+                        UserContext.getInstance().setCurrentUser(user);
+
+                        // Check if student needs to set learning path
+                        if (user instanceof UserFactory.Student) {
+                            UserFactory.Student student = (UserFactory.Student) user;
+                            if (student.getLearningPath() == null || student.getLearningPath().equals("Unknown")) {
+                                router.goToLearningPathSelection();
+                                return;
+                            }
+                        }
+
+                        router.goToDashboard(results.getA(), results.getB());
+                    } else {
+                        error.setText("Failed to load user profile");
+                        error.requestFocus();
+                    }
+                } catch (Exception e) {
+                    error.setText("Error: " + e.getMessage());
+                    error.requestFocus();
+                }
             } else {
                 error.setText("Invalid email or password");
                 error.requestFocus(); // screen reader announces error
@@ -128,12 +155,41 @@ public class LoginView {
 
         Scene scene = new Scene(root, 1280, 800);
 
-        scene.getStylesheets().add(
-                LoginView.class.getResource("/login_styles.css").toExternalForm()
-        );
+        try {
+            if (LoginView.class.getResource("/login_styles.css") != null) {
+                scene.getStylesheets().add(
+                        LoginView.class.getResource("/login_styles.css").toExternalForm()
+                );
+            }
+        } catch (Exception e) {
+            // CSS file not found, continue without styles
+            System.err.println("Warning: login_styles.css not found");
+        }
         // Initial focus (important for accessibility)
         //scene.setOnShown(e -> emailField.requestFocus());
 
         return scene;
+    }
+
+    /**
+     * Creates a user instance based on account type
+     */
+    private static User createUserInstance(int userId, String accountType) {
+        try {
+            return switch (accountType) {
+                case "Student" -> new Student(userId);
+                case "Educator" -> new Educator(userId);
+                case "Counselor" -> new Counselor(userId);
+                case "Parent" -> new Parent(userId);
+                case "Employer" -> new Employer(userId);
+                case "University" -> new University(userId);
+                case "Admin" -> new Admin(userId);
+                default -> null;
+            };
+        } catch (Exception e) {
+            System.err.println("Error creating user instance: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
     }
 }

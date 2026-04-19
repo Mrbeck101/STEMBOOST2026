@@ -1,18 +1,16 @@
 package UserFactory;
 
 import OtherComponents.Assessment;
-import OtherComponents.AuthorizationException;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+
 import java.util.HashMap;
 import java.util.List;
 
-public class Counselor extends User {
+public class Admin extends User {
 
-    private List<Integer> assignedStudents;
-
-    public Counselor(int id) {
-        super(id, "Counselor");
+    public Admin(int id) {
+        super(id, "Admin");
         initializeUser();
     }
 
@@ -25,28 +23,35 @@ public class Counselor extends User {
         super.setEmail(contactJson.get("email").getAsString());
         super.setPhone(contactJson.get("phone").getAsString());
         super.setAddress(contactJson.get("address").getAsString());
-
-        this.assignedStudents = DB.searchStudentsCounselorDB(super.getId());
     }
 
     @Override
     public List<Assessment> getAssessmentResults(int... id) {
-        return DB.searchAssessmentDB(id[0], super.getAcctType());
+        return List.of();
     }
 
-    public List<Integer> getAssignedStudents() {
-        return this.assignedStudents;
+    public List<HashMap<String, Object>> getAllUsers() {
+        return DB.listAllUsersSummary();
     }
 
-    public void addAssignedStudent(int studentID) {
-        this.assignedStudents.add(studentID);
+    public List<HashMap<String, Object>> getAllModules() {
+        return DB.listAllModulesSummary();
     }
 
-    public boolean enrollAssignedStudentInModule(int studentId, int moduleId) {
-        if (!this.assignedStudents.contains(studentId)) {
-            throw new AuthorizationException("Counselor can only enroll assigned students");
-        }
-        return DB.addStudentToModule(studentId, moduleId);
+    public List<HashMap<String, Object>> getAllJobPrograms() {
+        return DB.listAllJobProgramsSummary();
     }
 
+    public boolean deleteUser(int userId) {
+        return DB.deleteUserCascade(userId);
+    }
+
+    public boolean deleteModule(int moduleId) {
+        return DB.deleteModuleById(moduleId);
+    }
+
+    public boolean deleteJobProgram(int jobId) {
+        return DB.deleteJobProgramById(jobId);
+    }
 }
+

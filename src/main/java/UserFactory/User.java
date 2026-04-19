@@ -2,6 +2,7 @@ package UserFactory;
 
 import DatabaseController.dbConnector;
 import OtherComponents.Assessment;
+import OtherComponents.ValidationException;
 import OtherComponents.ContactInfo;
 import OtherComponents.InboxHandler;
 import OtherComponents.Message;
@@ -9,7 +10,7 @@ import OtherComponents.Message;
 import java.util.HashMap;
 import java.util.List;
 
-abstract class User {
+public abstract class User {
     private final int id;
     private String name;
     private final String acctType;
@@ -70,6 +71,31 @@ abstract class User {
 
     public void setAddress(String address) {
         this.contactInfo.setAddress(address);
+    }
+
+    public boolean updateContactInformation(String email, String phone, String address) {
+        if (email == null || email.isBlank()) {
+            throw new ValidationException("Email is required");
+        }
+        boolean updated = DB.updateContactInfo(this.id, email, phone, address);
+        if (updated) {
+            setEmail(email);
+            setPhone(phone);
+            setAddress(address);
+        }
+        return updated;
+    }
+
+    public String getEmail() {
+        return this.contactInfo.getContactInfo().get("email");
+    }
+
+    public String getPhone() {
+        return this.contactInfo.getContactInfo().get("phone");
+    }
+
+    public String getAddress() {
+        return this.contactInfo.getContactInfo().get("address");
     }
 
 

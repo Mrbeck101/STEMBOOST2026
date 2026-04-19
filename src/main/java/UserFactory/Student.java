@@ -101,6 +101,12 @@ public class Student extends User {
             System.out.println("Successfully assigned to a counselor");
         };
     }
-    //TODO write request program function
-    public void requestWorkProgram(){}
+
+    public boolean requestLearningModule(String learningPath, String details) {
+        return DB.notifyCounselorOfModuleRequest(super.getId(), learningPath, details);
+    }
+
+    public boolean requestWorkProgram(int jobProgramId, String details){
+        return DB.notifyCounselorOfJobProgramRequest(super.getId(), jobProgramId, details);
+    }
 }

@@ -54,19 +54,27 @@ public class RegisterView {
         TextField lastName = new TextField();
 
         ComboBox<String> acctType = new ComboBox<>();
-        acctType.getItems().addAll("Educator", "Student", "Parent");
+        acctType.getItems().addAll("Educator", "Student", "Parent", "Counselor", "Employer", "University", "Admin");
         acctType.setMaxWidth(Double.MAX_VALUE);
 
         TextField studentId = new TextField();
         Label studentIdLabel = new Label("Associated Student ID");
 
+        TextField companyField = new TextField();
+        Label companyLabel = new Label("Company Name");
+
         studentIdLabel.setVisible(false);
         studentId.setVisible(false);
+        companyLabel.setVisible(false);
+        companyField.setVisible(false);
 
         acctType.setOnAction(e -> {
             boolean isParent = "Parent".equals(acctType.getValue());
+            boolean isEmployer = "Employer".equals(acctType.getValue());
             studentIdLabel.setVisible(isParent);
             studentId.setVisible(isParent);
+            companyLabel.setVisible(isEmployer);
+            companyField.setVisible(isEmployer);
 
             if (isParent) studentId.requestFocus();
         });
@@ -98,7 +106,8 @@ public class RegisterView {
                     password.getText(),
                     firstName.getText(),
                     lastName.getText(),
-                    acctType.getValue()
+                    acctType.getValue(),
+                    companyField.getText()
             );
 
             if (success) {
@@ -118,6 +127,7 @@ public class RegisterView {
                 lastName,
                 acctType,
                 studentId,
+                companyField,
                 email,
                 password,
                 confirm,
@@ -165,6 +175,8 @@ public class RegisterView {
 
                 studentIdLabel, studentId,
 
+                companyLabel, companyField,
+
                 new Label("Email"), email,
                 new Label("Password"), password,
                 new Label("Confirm Password"), confirm,
@@ -179,9 +191,16 @@ public class RegisterView {
 
         Scene scene = new Scene(root, 1280, 800);
 
-        scene.getStylesheets().add(
-                RegisterView.class.getResource("/register_styles.css").toExternalForm()
-        );
+        try {
+            if (RegisterView.class.getResource("/register_styles.css") != null) {
+                scene.getStylesheets().add(
+                        RegisterView.class.getResource("/register_styles.css").toExternalForm()
+                );
+            }
+        } catch (Exception e) {
+            // CSS file not found, continue without styles
+            System.err.println("Warning: register_styles.css not found");
+        }
         //scene.setOnShown(e -> firstName.requestFocus());
 
         return scene;

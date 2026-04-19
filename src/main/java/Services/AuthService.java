@@ -10,9 +10,13 @@ public class AuthService {
     }
 
     public static boolean register(String email, String password, String fname, String lname, String acctType) {
+        return register(email, password, fname, lname, acctType, "");
+    }
+
+    public static boolean register(String email, String password, String fname, String lname, String acctType, String company) {
         try  {
             dbConnector DB = new dbConnector();
-            return DB.addUser(email, password, fname, lname, acctType);
+            return DB.addUser(email, password, fname, lname, acctType, company);
         } catch (Exception e) {
             e.printStackTrace();
             return false;
