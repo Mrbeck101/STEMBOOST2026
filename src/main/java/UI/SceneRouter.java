@@ -1,6 +1,7 @@
 package UI;
 
 import OtherComponents.Assessment;
+import Services.KeyboardTtsService;
 import Services.UIRefreshService;
 import UserFactory.*;
 import javafx.stage.Stage;
@@ -14,12 +15,14 @@ public class SceneRouter {
     }
 
     public void goToLogin() {
+        KeyboardTtsService.getInstance().onSceneExit();
         UIRefreshService.getInstance().stopPolling();
         UserContext.getInstance().logout();
         stage.setScene(LoginView.create(this));
     }
 
     public void goToRegister() {
+        KeyboardTtsService.getInstance().onSceneExit();
         stage.setScene(RegisterView.create(this));
     }
 
@@ -51,6 +54,7 @@ public class SceneRouter {
     }
 
     public void goToDashboard(int id, String accountType) {
+        KeyboardTtsService.getInstance().onSceneExit();
         refreshCurrentUserFromDb();
         stage.setTitle("STEMBOOST - " + accountType + " Dashboard");
 
@@ -77,50 +81,59 @@ public class SceneRouter {
     }
 
     public void goToModules() {
+        KeyboardTtsService.getInstance().onSceneExit();
         refreshCurrentUserFromDb();
         stage.setScene(ModuleView.create(this));
     }
 
     public void goToAssessments() {
+        KeyboardTtsService.getInstance().onSceneExit();
         refreshCurrentUserFromDb();
         stage.setScene(AssessmentView.create(this));
     }
 
     public void goToInbox() {
+        KeyboardTtsService.getInstance().onSceneExit();
         refreshCurrentUserFromDb();
         stage.setScene(InboxView.create(this, -1));
     }
 
     public void goToInboxWithContact(int contactId) {
+        KeyboardTtsService.getInstance().onSceneExit();
         refreshCurrentUserFromDb();
         stage.setTitle("STEMBOOST - Inbox");
         stage.setScene(InboxView.create(this, contactId));
     }
 
     public void goToTakeAssessment(Assessment assessment) {
+        KeyboardTtsService.getInstance().onSceneExit();
         stage.setTitle("STEMBOOST - Take Assessment");
         stage.setScene(TakeAssessmentView.create(this, assessment));
     }
 
     public void goToLearningPathSelection() {
+        KeyboardTtsService.getInstance().onSceneExit();
         refreshCurrentUserFromDb();
         stage.setTitle("STEMBOOST - Learning Path Selection");
         stage.setScene(LearningPathSelectionView.create(this));
     }
 
     public void goToContacts() {
+        KeyboardTtsService.getInstance().onSceneExit();
         refreshCurrentUserFromDb();
         stage.setTitle("STEMBOOST - Contacts");
         stage.setScene(ContactsView.create(this));
     }
 
     public void goToProfile() {
+        KeyboardTtsService.getInstance().onSceneExit();
         refreshCurrentUserFromDb();
         stage.setTitle("STEMBOOST - Profile");
         stage.setScene(ProfileView.create(this));
     }
 
     public void goToStudentProfile(int studentId) {
+        KeyboardTtsService.getInstance().onSceneExit();
         stage.setTitle("STEMBOOST - Student Profile");
         stage.setScene(ProfileView.createReadOnly(this, studentId));
     }

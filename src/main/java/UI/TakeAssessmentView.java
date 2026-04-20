@@ -3,6 +3,7 @@ package UI;
 import DatabaseController.dbConnector;
 import OtherComponents.Assessment;
 import OtherComponents.AssessmentForm;
+import Services.KeyboardTtsService;
 import UserFactory.User;
 import Services.UIRefreshService;
 import atlantafx.base.theme.PrimerDark;
@@ -186,7 +187,29 @@ public class TakeAssessmentView {
         bottomBar.getChildren().add(submitBtn);
         root.setBottom(bottomBar);
 
-        return new Scene(root, 1400, 900);
+        Scene scene = new Scene(root, 1400, 900);
+
+        KeyboardTtsService.getInstance().bindScene(
+                scene,
+                KeyboardTtsService.AccessMode.STUDENT_ONLY,
+                () -> {
+                    StringBuilder text = new StringBuilder("Take assessment screen for ")
+                            .append(moduleSubject).append(". ");
+                    if (form == null) {
+                        text.append(assessment.getContent() == null ? "No assessment content available." : assessment.getContent());
+                    } else {
+                        int i = 1;
+                        for (AssessmentForm.Question q : form.getQuestions()) {
+                            text.append("Question ").append(i).append(": ").append(q.getPrompt()).append(". ");
+                            i++;
+                        }
+                    }
+                    text.append("Press F2 to pause or resume. Use plus and minus to move sentence by sentence.");
+                    return new KeyboardTtsService.ReadingContent(text.toString());
+                }
+        );
+
+        return scene;
     }
 
     private static void showInfo(String message) {

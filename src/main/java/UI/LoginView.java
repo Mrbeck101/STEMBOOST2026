@@ -1,6 +1,7 @@
 package UI;
 
 import Services.AuthService;
+import Services.KeyboardTtsService;
 import UserFactory.*;
 import UserFactory.Parent;
 import atlantafx.base.theme.PrimerDark; // AtlantaFX theme
@@ -167,6 +168,15 @@ public class LoginView {
         }
         // Initial focus (important for accessibility)
         //scene.setOnShown(e -> emailField.requestFocus());
+
+        KeyboardTtsService.getInstance().bindScene(
+                scene,
+                KeyboardTtsService.AccessMode.PUBLIC_TOGGLE,
+                () -> new KeyboardTtsService.ReadingContent(
+                        "Login screen. Enter your email and password, then activate the login button. " +
+                        "Press F1 to toggle text to speech on or off."
+                )
+        );
 
         return scene;
     }

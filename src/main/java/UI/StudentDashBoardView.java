@@ -4,6 +4,7 @@ import UserFactory.Student;
 import DatabaseController.dbConnector;
 import OtherComponents.LearningModule;
 import OtherComponents.Assessment;
+import Services.KeyboardTtsService;
 import Services.UIRefreshService;
 import javafx.geometry.*;
 import javafx.scene.*;
@@ -42,6 +43,15 @@ public class StudentDashBoardView {
                 "STEMBOOST - Student Dashboard", student.getName(), "University: " + student.getUniversity(), router);
 
         Scene scene = UIComponents.buildScene(topBar, tabPane);
+
+        KeyboardTtsService.getInstance().bindScene(
+                scene,
+                KeyboardTtsService.AccessMode.STUDENT_ONLY,
+                () -> new KeyboardTtsService.ReadingContent(
+                        "Student dashboard. Tabs include dashboard, learning modules, assessments, and inbox. " +
+                        "Press F1 to toggle text to speech. Press F2 to pause or resume. Press plus to skip forward one sentence and minus to go back one sentence."
+                )
+        );
 
         UIRefreshService.UIRefreshListener modulesListener = (updateType, data) -> {
             if ("MODULES_UPDATED".equals(updateType)) {

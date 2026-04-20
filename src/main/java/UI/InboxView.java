@@ -2,6 +2,7 @@ package UI;
 
 import DatabaseController.dbConnector;
 import Services.FetchProfileService;
+import Services.KeyboardTtsService;
 import Services.UIRefreshService;
 import UserFactory.User;
 import OtherComponents.Message;
@@ -257,7 +258,36 @@ public class InboxView {
             openConversation.accept(preSelectedContactId, preSelectedName);
         }
 
-        return new Scene(root, 1400, 900);
+        Scene scene = new Scene(root, 1400, 900);
+
+        KeyboardTtsService.getInstance().bindScene(
+                scene,
+                KeyboardTtsService.AccessMode.STUDENT_ONLY,
+                () -> {
+                    if (!(UserContext.getInstance().getCurrentUser() != null
+                            && "Student".equals(UserContext.getInstance().getCurrentUser().getAcctType()))) {
+                        return new KeyboardTtsService.ReadingContent("Inbox screen. Student text to speech controls are disabled for this role.");
+                    }
+
+                    List<Message> msgs = currentUser.checkInbox();
+                    if (msgs == null || msgs.isEmpty()) {
+                        return new KeyboardTtsService.ReadingContent(
+                                "Student inbox. You currently have no messages. Press F2 to pause or resume narration."
+                        );
+                    }
+
+                    StringBuilder text = new StringBuilder("Student inbox with ")
+                            .append(msgs.size()).append(" messages. ");
+                    for (Message m : msgs) {
+                        text.append("Message from user ").append(m.getSenderID()).append(": ")
+                                .append(m.getContent()).append(". ");
+                    }
+                    text.append("Press F2 to pause or resume. Use plus and minus to move sentence by sentence.");
+                    return new KeyboardTtsService.ReadingContent(text.toString());
+                }
+        );
+
+        return scene;
     }
 
     private static VBox createConversationItem(String partnerName, Runnable onClick) {

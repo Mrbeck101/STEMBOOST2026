@@ -3,6 +3,7 @@ package UI;
 import UserFactory.*;
 import OtherComponents.LearningModule;
 import Services.FetchProfileService;
+import Services.KeyboardTtsService;
 import Services.UIRefreshService;
 import DatabaseController.dbConnector;
 import atlantafx.base.theme.PrimerDark;
@@ -79,6 +80,7 @@ public class ModuleView {
 
         VBox modulesVBox = new VBox(15);
         modulesVBox.setPadding(new Insets(10));
+        final java.util.List<LearningModule>[] displayedModules = new java.util.List[]{java.util.List.of()};
 
         Runnable refreshModules = () -> {
             modulesVBox.getChildren().clear();
@@ -94,6 +96,8 @@ public class ModuleView {
             } else {
                 modules = java.util.List.of();
             }
+
+            displayedModules[0] = modules;
 
             if (!modules.isEmpty()) {
                 for (LearningModule module : modules) {
@@ -121,6 +125,50 @@ public class ModuleView {
         root.setCenter(content);
 
         Scene scene = new Scene(root, 1400, 900);
+
+        KeyboardTtsService.getInstance().bindScene(
+                scene,
+                KeyboardTtsService.AccessMode.STUDENT_ONLY,
+                () -> {
+                    if (!(UserContext.getInstance().getCurrentUser() instanceof Student)) {
+                        return new KeyboardTtsService.ReadingContent(
+                                "Module browser for staff roles. TTS controls are only active for student accounts."
+                        );
+                    }
+
+                    java.util.List<LearningModule> modules = displayedModules[0] == null ? java.util.List.of() : displayedModules[0];
+                    if (modules.isEmpty()) {
+                        return new KeyboardTtsService.ReadingContent("No modules are available right now.");
+                    }
+
+                    LearningModule target = null;
+                    if (selectedModuleId != null) {
+                        for (LearningModule m : modules) {
+                            if (m.getModuleID() == selectedModuleId) {
+                                target = m;
+                                break;
+                            }
+                        }
+                    }
+                    if (target == null && modules.size() == 1) {
+                        target = modules.get(0);
+                    }
+                    if (target == null) {
+                        target = modules.get(0);
+                    }
+
+                    String text = "Module " + target.getSubject() + ". Learning path " + target.getLearningPath() + ". "
+                            + "Current progress " + target.getProgress() + " percent. "
+                            + target.getContent() + " "
+                            + "Press F2 to pause or resume. Press plus to skip forward and minus to go back a sentence.";
+
+                    return new KeyboardTtsService.ReadingContent(
+                            text,
+                            target.getModuleID(),
+                            target.getProgress()
+                    );
+                }
+        );
 
         UIRefreshService.UIRefreshListener modulesListener = (updateType, data) -> {
             if ("MODULES_UPDATED".equals(updateType)) {

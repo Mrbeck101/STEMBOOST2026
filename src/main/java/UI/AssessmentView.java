@@ -3,6 +3,7 @@ package UI;
 import UserFactory.*;
 import DatabaseController.dbConnector;
 import OtherComponents.Assessment;
+import Services.KeyboardTtsService;
 import atlantafx.base.theme.PrimerDark;
 import javafx.geometry.*;
 import javafx.scene.*;
@@ -60,6 +61,7 @@ public class AssessmentView {
         } else if (currentUser instanceof Educator) {
             assessments = ((Educator) currentUser).getAssessmentResults();
         }
+        final java.util.List<Assessment> finalAssessments = assessments;
 
         ScrollPane scrollPane = new ScrollPane();
         scrollPane.setFitToWidth(true);
@@ -87,6 +89,34 @@ public class AssessmentView {
         root.setCenter(content);
 
         Scene scene = new Scene(root, 1400, 900);
+
+        KeyboardTtsService.getInstance().bindScene(
+                scene,
+                KeyboardTtsService.AccessMode.STUDENT_ONLY,
+                () -> {
+                    if (!(UserContext.getInstance().getCurrentUser() instanceof Student)) {
+                        return new KeyboardTtsService.ReadingContent("Assessment management screen for staff roles.");
+                    }
+
+                    if (finalAssessments == null || finalAssessments.isEmpty()) {
+                        return new KeyboardTtsService.ReadingContent("You currently have no assessments available.");
+                    }
+
+                    StringBuilder text = new StringBuilder("Student assessments. ");
+                    for (Assessment a : finalAssessments) {
+                        String subject = (a.getModuleSubject() == null || a.getModuleSubject().isBlank())
+                                ? "Module " + a.getModuleID()
+                                : a.getModuleSubject();
+                        text.append("Assessment ").append(a.getAssessmentID())
+                                .append(" for ").append(subject).append(". ")
+                                .append(a.isCompleted() ? "Completed. " : "Pending. ")
+                                .append(a.getGrade() >= 0 ? "Grade " + a.getGrade() + " percent. " : "Not graded yet. ");
+                    }
+                    text.append("Press F2 to pause or resume. Use plus and minus to move sentence by sentence.");
+                    return new KeyboardTtsService.ReadingContent(text.toString());
+                }
+        );
+
         return scene;
     }
 

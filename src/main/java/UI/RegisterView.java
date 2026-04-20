@@ -1,6 +1,7 @@
 package UI;
 
 import Services.AuthService;
+import Services.KeyboardTtsService;
 import atlantafx.base.theme.PrimerDark;
 import javafx.geometry.*;
 import javafx.scene.*;
@@ -202,6 +203,15 @@ public class RegisterView {
             System.err.println("Warning: register_styles.css not found");
         }
         //scene.setOnShown(e -> firstName.requestFocus());
+
+        KeyboardTtsService.getInstance().bindScene(
+                scene,
+                KeyboardTtsService.AccessMode.PUBLIC_TOGGLE,
+                () -> new KeyboardTtsService.ReadingContent(
+                        "Registration screen. Provide first name, last name, account type, email, and password fields. " +
+                        "Press F1 to toggle text to speech on or off."
+                )
+        );
 
         return scene;
     }
