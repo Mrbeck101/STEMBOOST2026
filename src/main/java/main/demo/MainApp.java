@@ -17,8 +17,8 @@ public class MainApp extends Application {
 
             // Set window size to 80% of screen size, centered
             Rectangle2D screenBounds = Screen.getPrimary().getVisualBounds();
-            double width = screenBounds.getWidth() * 0.8;
-            double height = screenBounds.getHeight() * 0.8;
+            double width = 1280; //screenBounds.getWidth() * 0.8;
+            double height = 720; //screenBounds.getHeight() * 0.8;
 
             stage.setWidth(width);
             stage.setHeight(height);

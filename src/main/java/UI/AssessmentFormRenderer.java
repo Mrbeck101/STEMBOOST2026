@@ -2,6 +2,10 @@ package UI;
 
 import OtherComponents.Assessment;
 import OtherComponents.AssessmentForm;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.ButtonBar;
@@ -114,42 +118,156 @@ public class AssessmentFormRenderer {
         scrollPane.setFitToWidth(true);
         scrollPane.setPrefViewportHeight(500);
         dialog.getDialogPane().setContent(scrollPane);
+        UIComponents.preparePopupForStudentTts(dialog);
 
         Optional<ButtonType> result = dialog.showAndWait();
         if (result.isEmpty() || result.get() != submitType) {
             return null;
         }
 
-        StringBuilder responseBuilder = new StringBuilder();
-        responseBuilder.append("Assessment Submission for assessment #")
-                .append(assessment.getAssessmentID())
-                .append("\n\n");
+        return buildSubmissionJson(assessment, form, answerControls);
+    }
+
+    public static String buildSubmissionJson(Assessment assessment, AssessmentForm form, List<Object> answerControls) {
+        JsonObject submission = new JsonObject();
+        submission.addProperty("assessmentId", assessment.getAssessmentID());
+        JsonArray responses = new JsonArray();
 
         if (form == null) {
+            JsonObject response = new JsonObject();
+            response.addProperty("index", 1);
+            response.addProperty("type", "OPEN_ENDED");
+            response.addProperty("prompt", assessment.getContent() == null ? "" : assessment.getContent());
             TextArea answerArea = (TextArea) answerControls.get(0);
-            responseBuilder.append("Response:\n")
-                    .append(answerArea.getText().trim().isEmpty() ? "No answer provided" : answerArea.getText().trim());
-            return responseBuilder.toString();
+            String answer = answerArea.getText().trim().isEmpty() ? "No answer provided" : answerArea.getText().trim();
+            response.addProperty("answer", answer);
+            responses.add(response);
+            submission.add("responses", responses);
+            return submission.toString();
         }
 
         List<AssessmentForm.Question> questions = form.getQuestions();
         for (int i = 0; i < questions.size(); i++) {
             AssessmentForm.Question question = questions.get(i);
-            responseBuilder.append("Q").append(i + 1).append(": ").append(question.getPrompt()).append("\n");
+            JsonObject response = new JsonObject();
+            response.addProperty("index", i + 1);
+            response.addProperty("type", question.getType().name());
+            response.addProperty("prompt", question.getPrompt());
+
             if (question.getType() == AssessmentForm.QuestionType.MULTIPLE_CHOICE) {
+                JsonArray options = new JsonArray();
+                for (String option : question.getOptions()) {
+                    options.add(option);
+                }
+                response.add("options", options);
+
                 ToggleGroup group = (ToggleGroup) answerControls.get(i);
                 String answer = group.getSelectedToggle() instanceof RadioButton radio
                         ? radio.getText()
                         : "No option selected";
-                responseBuilder.append("Answer: ").append(answer).append("\n\n");
+                response.addProperty("answer", answer);
             } else {
                 TextArea answerArea = (TextArea) answerControls.get(i);
                 String answer = answerArea.getText().trim().isEmpty() ? "No answer provided" : answerArea.getText().trim();
-                responseBuilder.append("Answer: ").append(answer).append("\n\n");
+                response.addProperty("answer", answer);
             }
+            responses.add(response);
         }
 
-        return responseBuilder.toString();
+        submission.add("responses", responses);
+        return submission.toString();
+    }
+
+    public static Node createSubmissionPreview(String submissionJson, String fallbackAssessmentContent) {
+        VBox box = new VBox(10);
+        box.setPadding(new Insets(5));
+
+        if (submissionJson == null || submissionJson.isBlank()) {
+            Label noSubmission = new Label("No student response was found for this assessment yet.");
+            noSubmission.setWrapText(true);
+            noSubmission.setStyle("-fx-text-fill: #c9d1d9;");
+            box.getChildren().add(noSubmission);
+            return box;
+        }
+
+        try {
+            JsonElement root = JsonParser.parseString(submissionJson);
+            if (!root.isJsonObject()) {
+                return createLegacySubmissionPreview(submissionJson, fallbackAssessmentContent);
+            }
+
+            JsonObject json = root.getAsJsonObject();
+            JsonArray responses = json.has("responses") && json.get("responses").isJsonArray()
+                    ? json.getAsJsonArray("responses")
+                    : null;
+            if (responses == null) {
+                return createLegacySubmissionPreview(submissionJson, fallbackAssessmentContent);
+            }
+
+            for (JsonElement responseEl : responses) {
+                if (responseEl == null || !responseEl.isJsonObject()) {
+                    continue;
+                }
+                JsonObject response = responseEl.getAsJsonObject();
+                int index = response.has("index") ? response.get("index").getAsInt() : 0;
+                String promptText = response.has("prompt") ? response.get("prompt").getAsString() : "";
+                String answerText = response.has("answer") ? response.get("answer").getAsString() : "No answer provided";
+                String type = response.has("type") ? response.get("type").getAsString() : "OPEN_ENDED";
+
+                VBox questionBox = new VBox(6);
+                Label prompt = new Label((index > 0 ? index + ". " : "") + promptText);
+                prompt.setWrapText(true);
+                prompt.setStyle("-fx-font-weight: bold; -fx-text-fill: #c9d1d9;");
+                questionBox.getChildren().add(prompt);
+
+                if ("MULTIPLE_CHOICE".equalsIgnoreCase(type) && response.has("options") && response.get("options").isJsonArray()) {
+                    JsonArray options = response.getAsJsonArray("options");
+                    for (JsonElement optionEl : options) {
+                        String option = optionEl == null || optionEl.isJsonNull() ? "" : optionEl.getAsString();
+                        boolean selected = option.equals(answerText);
+                        Label optionLabel = new Label((selected ? "[X] " : "[ ] ") + option);
+                        optionLabel.setStyle(selected
+                                ? "-fx-text-fill: #58a6ff; -fx-font-weight: bold;"
+                                : "-fx-text-fill: #8b949e;");
+                        questionBox.getChildren().add(optionLabel);
+                    }
+                } else {
+                    Label answerLabel = new Label("Answer: " + answerText);
+                    answerLabel.setWrapText(true);
+                    answerLabel.setStyle("-fx-text-fill: #8b949e;");
+                    questionBox.getChildren().add(answerLabel);
+                }
+                box.getChildren().add(questionBox);
+            }
+
+            if (box.getChildren().isEmpty()) {
+                return createLegacySubmissionPreview(submissionJson, fallbackAssessmentContent);
+            }
+            return box;
+        } catch (Exception ex) {
+            return createLegacySubmissionPreview(submissionJson, fallbackAssessmentContent);
+        }
+    }
+
+    private static Node createLegacySubmissionPreview(String submissionContent, String fallbackAssessmentContent) {
+        VBox box = new VBox(10);
+        box.setPadding(new Insets(5));
+
+        Label legacy = new Label(submissionContent == null || submissionContent.isBlank()
+                ? "No student response was found for this assessment yet."
+                : submissionContent);
+        legacy.setWrapText(true);
+        legacy.setStyle("-fx-text-fill: #c9d1d9;");
+        box.getChildren().add(legacy);
+
+        if (fallbackAssessmentContent != null && !fallbackAssessmentContent.isBlank()) {
+            Label divider = new Label("Original assessment:");
+            divider.setStyle("-fx-text-fill: #8b949e; -fx-font-style: italic;");
+            box.getChildren().add(divider);
+            box.getChildren().add(createPreview(fallbackAssessmentContent));
+        }
+
+        return box;
     }
 }
 

@@ -1,6 +1,5 @@
 package UI;
 
-import Services.FetchProfileService;
 import UserFactory.User;
 import atlantafx.base.theme.PrimerDark;
 import com.google.gson.Gson;
@@ -9,7 +8,6 @@ import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
@@ -84,11 +82,7 @@ public class ProfileView {
     }
 
     private static void showAlert(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
+        UIComponents.showAlert(title, message);
     }
 
     /**
@@ -97,8 +91,8 @@ public class ProfileView {
     public static Scene createReadOnly(SceneRouter router, int targetUserId) {
         Application.setUserAgentStylesheet(new PrimerDark().getUserAgentStylesheet());
 
-        FetchProfileService service = new FetchProfileService();
-        HashMap<String, Object> data = service.getAccountSummary(targetUserId);
+        User currentUser = UserContext.getInstance().getCurrentUser();
+        HashMap<String, Object> data = currentUser == null ? null : currentUser.getAccountSummary(targetUserId);
 
         BorderPane root = new BorderPane();
 

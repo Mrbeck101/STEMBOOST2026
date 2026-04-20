@@ -106,7 +106,44 @@ public class Student extends User {
         return DB.notifyCounselorOfModuleRequest(super.getId(), learningPath, details);
     }
 
-    public boolean requestWorkProgram(int jobProgramId, String details){
-        return DB.notifyCounselorOfJobProgramRequest(super.getId(), jobProgramId, details);
+    public boolean updateLearningPath(String learningPath) {
+        boolean updated = DB.updateStudentLearningPath(super.getId(), learningPath);
+        if (updated) {
+            this.learningPath = learningPath;
+        }
+        return updated;
+    }
+
+    public Integer findEducatorForModule(int moduleId) {
+        return DB.findEducatorForModule(moduleId);
+    }
+
+    public boolean updateModuleProgress(int moduleId, int progress) {
+        boolean updated = DB.updateModuleProgress(super.getId(), moduleId, progress);
+        if (updated && this.modules != null) {
+            for (LearningModule module : this.modules) {
+                if (module.getModuleID() == moduleId) {
+                    module.setProgress(progress);
+                    break;
+                }
+            }
+        }
+        return updated;
+    }
+
+    public boolean updateAssessmentCompletion(int assessmentId, boolean completed) {
+        return updateAssessmentCompletion(assessmentId, completed, null);
+    }
+
+    public boolean updateAssessmentCompletion(int assessmentId, boolean completed, String submissionJson) {
+        boolean updated = DB.updateAssessmentCompletion(super.getId(), assessmentId, completed, submissionJson);
+        if (updated && this.assessments != null) {
+            this.assessments = DB.searchAssessmentDB(super.getId(), super.getAcctType());
+        }
+        return updated;
+    }
+
+    public boolean requestWorkProgram(String details){
+        return DB.notifyCounselorOfJobProgramRequest(super.getId(), details);
     }
 }

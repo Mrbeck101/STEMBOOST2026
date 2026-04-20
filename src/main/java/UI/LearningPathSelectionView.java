@@ -1,7 +1,6 @@
 package UI;
 
 import UserFactory.Student;
-import DatabaseController.dbConnector;
 import atlantafx.base.theme.PrimerDark;
 import javafx.geometry.*;
 import javafx.scene.*;
@@ -119,11 +118,7 @@ public class LearningPathSelectionView {
                 String selectedPath = (String) selected.getUserData();
 
                 try {
-                    // Update database with learning path
-                    dbConnector db = new dbConnector();
-                    if (db.updateStudentLearningPath(student.getId(), selectedPath)) {
-                        // Update local student object
-                        student.setLearningPath(selectedPath);
+                    if (student.updateLearningPath(selectedPath)) {
                         showAlert("Success", "Your learning path has been set to:\n" + selectedPath);
                         router.goToDashboard(student.getId(), "Student");
                     } else {
@@ -223,11 +218,7 @@ public class LearningPathSelectionView {
             String recommendedPath = calculateRecommendedPath(questionsBox);
             if (recommendedPath != null) {
                 try {
-                    // Update database with learning path
-                    dbConnector db = new dbConnector();
-                    if (db.updateStudentLearningPath(student.getId(), recommendedPath)) {
-                        // Update local student object
-                        student.setLearningPath(recommendedPath);
+                    if (student.updateLearningPath(recommendedPath)) {
                         showAlert("Success", "Based on your answers, we recommend:\n" + recommendedPath);
                         router.goToDashboard(student.getId(), "Student");
                     } else {
@@ -316,10 +307,6 @@ public class LearningPathSelectionView {
     }
 
     private static void showAlert(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
+        UIComponents.showAlert(title, message);
     }
 }

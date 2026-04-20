@@ -1,7 +1,6 @@
 package UI;
 
 import UserFactory.*;
-import DatabaseController.dbConnector;
 import OtherComponents.Assessment;
 import Services.KeyboardTtsService;
 import atlantafx.base.theme.PrimerDark;
@@ -72,7 +71,7 @@ public class AssessmentView {
 
         if (assessments != null && !assessments.isEmpty()) {
             for (Assessment assessment : assessments) {
-                VBox assessmentCard = createAssessmentDetailCard(assessment, currentUser instanceof Student, router);
+                VBox assessmentCard = createAssessmentDetailCard(assessment, currentUser, router);
                 assessmentsVBox.getChildren().add(assessmentCard);
             }
         } else {
@@ -112,15 +111,23 @@ public class AssessmentView {
                                 .append(a.isCompleted() ? "Completed. " : "Pending. ")
                                 .append(a.getGrade() >= 0 ? "Grade " + a.getGrade() + " percent. " : "Not graded yet. ");
                     }
-                    text.append("Press F2 to pause or resume. Use plus and minus to move sentence by sentence.");
+                    text.append("Press F2 to pause or resume. Use F4 and F3 to move sentence by sentence.");
                     return new KeyboardTtsService.ReadingContent(text.toString());
                 }
         );
 
+        scene.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> {
+            if (e.getCode() == javafx.scene.input.KeyCode.ESCAPE) {
+                router.goToCurrentUserDashboard();
+                e.consume();
+            }
+        });
+
         return scene;
     }
 
-    private static VBox createAssessmentDetailCard(Assessment assessment, boolean isStudent, SceneRouter router) {
+    private static VBox createAssessmentDetailCard(Assessment assessment, User currentUser, SceneRouter router) {
+        boolean isStudent = currentUser instanceof Student;
         VBox card = new VBox(12);
         card.setPadding(new Insets(20));
         card.setStyle("-fx-background-color: #161B22; -fx-border-radius: 8; -fx-border-color: #30363D;");
@@ -175,7 +182,7 @@ public class AssessmentView {
                         showInfo("Assessment content cannot be empty.");
                         return;
                     }
-                    boolean updated = new dbConnector().updateAssessmentContent(assessment.getAssessmentID(), updatedContent.trim());
+                    boolean updated = currentUser.getDbConnector().updateAssessmentContent(assessment.getAssessmentID(), updatedContent.trim());
                     showInfo(updated ? "Assessment updated." : "Assessment update failed.");
                     if (updated) {
                         router.goToAssessments();
@@ -184,7 +191,7 @@ public class AssessmentView {
             });
 
             viewResultsBtn.setOnAction(e -> {
-                java.util.List<Assessment> moduleAssessments = new dbConnector().searchAssessmentDB(assessment.getModuleID(), "Educator");
+                java.util.List<Assessment> moduleAssessments = currentUser.getDbConnector().searchAssessmentDB(assessment.getModuleID(), "Educator");
                 long gradedCount = moduleAssessments.stream().filter(a -> a.getGrade() >= 0).count();
                 showInfo("Module #" + assessment.getModuleID() + " results: " + gradedCount + " graded submissions out of " + moduleAssessments.size());
             });
@@ -202,9 +209,6 @@ public class AssessmentView {
     }
 
     private static void showInfo(String message) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
+        UIComponents.showInfo(message);
     }
 }

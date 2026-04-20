@@ -1,10 +1,10 @@
 package UI;
 
-import DatabaseController.dbConnector;
 import OtherComponents.Assessment;
 import OtherComponents.AssessmentForm;
 import Services.KeyboardTtsService;
 import UserFactory.User;
+import UserFactory.Student;
 import Services.UIRefreshService;
 import atlantafx.base.theme.PrimerDark;
 import javafx.geometry.Insets;
@@ -129,55 +129,16 @@ public class TakeAssessmentView {
         Button submitBtn = new Button("Submit Assessment");
         submitBtn.setStyle("-fx-font-size: 13; -fx-padding: 10 20 10 20; -fx-background-color: #238636; -fx-text-fill: white;");
         submitBtn.setOnAction(e -> {
-            // Collect responses
-            StringBuilder responseBuilder = new StringBuilder();
-            responseBuilder.append("Assessment Submission for assessment #")
-                    .append(assessment.getAssessmentID())
-                    .append("\n\n");
-
-            if (form == null) {
-                TextArea area = (TextArea) answerControls.get(0);
-                String answer = area.getText().trim().isEmpty() ? "No answer provided" : area.getText().trim();
-                responseBuilder.append("Response:\n").append(answer);
-            } else {
-                List<AssessmentForm.Question> questions = form.getQuestions();
-                for (int i = 0; i < questions.size(); i++) {
-                    AssessmentForm.Question question = questions.get(i);
-                    responseBuilder.append("Q").append(i + 1).append(": ").append(question.getPrompt()).append("\n");
-                    if (question.getType() == AssessmentForm.QuestionType.MULTIPLE_CHOICE) {
-                        ToggleGroup group = (ToggleGroup) answerControls.get(i);
-                        String answer = group.getSelectedToggle() instanceof RadioButton radio
-                                ? radio.getText() : "No option selected";
-                        responseBuilder.append("Answer: ").append(answer).append("\n\n");
-                    } else {
-                        TextArea area = (TextArea) answerControls.get(i);
-                        String answer = area.getText().trim().isEmpty() ? "No answer provided" : area.getText().trim();
-                        responseBuilder.append("Answer: ").append(answer).append("\n\n");
-                    }
-                }
-            }
-
-            String responses = responseBuilder.toString();
+            String submissionJson = AssessmentFormRenderer.buildSubmissionJson(assessment, form, answerControls);
             try {
-                Integer educatorId = new dbConnector().findEducatorForModule(assessment.getModuleID());
-                if (educatorId == null) {
-                    showInfo("Could not locate the educator for this assessment.");
-                    return;
-                }
-                String submissionContent = "Assessment " + assessment.getAssessmentID()
-                        + " Submitted for Module: " + moduleSubject + "\n\n" + responses;
-                boolean sent = currentUser.sendMessage(educatorId, submissionContent);
-                if (sent) {
-                    boolean markedComplete = new dbConnector().updateAssessmentCompletion(
-                            currentUser.getId(), assessment.getAssessmentID(), true);
-                    if (markedComplete) {
-                        showInfo("Assessment submitted successfully!");
-                        router.goToAssessments();
-                    } else {
-                        showInfo("Responses sent, but completion state was not updated. Please contact your educator.");
-                    }
+                boolean markedComplete = currentUser instanceof Student studentUser
+                        ? studentUser.updateAssessmentCompletion(assessment.getAssessmentID(), true, submissionJson)
+                        : currentUser.getDbConnector().updateAssessmentCompletion(currentUser.getId(), assessment.getAssessmentID(), true, submissionJson);
+                if (markedComplete) {
+                    showInfo("Assessment submitted successfully!");
+                    router.goToAssessments();
                 } else {
-                    showInfo("Failed to submit assessment. Please try again.");
+                    showInfo("Failed to save assessment submission. Please try again.");
                 }
             } catch (Exception ex) {
                 showInfo("Failed to submit assessment: " + ex.getMessage());
@@ -204,7 +165,7 @@ public class TakeAssessmentView {
                             i++;
                         }
                     }
-                    text.append("Press F2 to pause or resume. Use plus and minus to move sentence by sentence.");
+                    text.append("Press F2 to pause or resume. Use F4 and F3 to move sentence by sentence.");
                     return new KeyboardTtsService.ReadingContent(text.toString());
                 }
         );
@@ -213,10 +174,7 @@ public class TakeAssessmentView {
     }
 
     private static void showInfo(String message) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
+        UIComponents.showInfo(message);
     }
 }
 

@@ -2,7 +2,10 @@ package DatabaseController;
 
 import OtherComponents.*;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import eu.hansolo.toolbox.tuples.Pair;
 
 import java.sql.*;
@@ -11,13 +14,15 @@ import java.io.FileInputStream;
 
 public class dbConnector {
 
+    private static volatile dbConnector instance;
+
     private final String dbName = "stemboost_db";
     private String ip;
     private String user;
     private String password;
     private final Gson gson = new Gson();
 
-    public dbConnector() {
+    private dbConnector() {
         try {
             Properties props = new Properties();
             try (FileInputStream fis = new FileInputStream("db.properties")) {
@@ -30,6 +35,17 @@ public class dbConnector {
             System.out.println("Failed to fetch DB details");
             e.printStackTrace();
         }
+    }
+
+    public static dbConnector getInstance() {
+        if (instance == null) {
+            synchronized (dbConnector.class) {
+                if (instance == null) {
+                    instance = new dbConnector();
+                }
+            }
+        }
+        return instance;
     }
 
     // ── private helpers ──────────────────────────────────────────────────────
@@ -48,21 +64,272 @@ public class dbConnector {
         return c;
     }
 
-    /** Maps the current ResultSet row to an AssessmentSubmission. */
-    private AssessmentSubmission submissionFromRow(ResultSet rs) throws SQLException {
+    /** Maps the current ResultSet row to an Assessment used in educator submission queues. */
+    private Assessment submissionFromRow(ResultSet rs) throws SQLException {
         int studentId = rs.getInt("student_id");
         String name = (rs.getString("first_name") + " " + rs.getString("last_name")).trim();
         if (name.isEmpty()) name = "Student #" + studentId;
-        return new AssessmentSubmission(
+        return new Assessment(
                 studentId, name,
                 rs.getInt("assessment_id"),
                 rs.getInt("associated_mod"),
+                rs.getInt("grade"),
                 rs.getString("learning_path"),
                 rs.getString("module_subject"),
-                rs.getInt("grade"),
-                rs.getBoolean("completed"),
-                rs.getString("submission_content")
+                rs.getString("submission_content"),
+                rs.getBoolean("completed")
         );
+    }
+
+    private Set<Integer> parseContactIds(String json, int selfId) {
+        Set<Integer> ids = new LinkedHashSet<>();
+        if (json == null || json.isBlank()) {
+            return ids;
+        }
+        try {
+            JsonElement element = JsonParser.parseString(json);
+            if (element.isJsonArray()) {
+                for (JsonElement contact : element.getAsJsonArray()) {
+                    if (contact != null && contact.isJsonPrimitive() && contact.getAsJsonPrimitive().isNumber()) {
+                        int id = contact.getAsInt();
+                        if (id > 0 && id != selfId) {
+                            ids.add(id);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Corrupt JSON should not break messaging; start from an empty set.
+        }
+        return ids;
+    }
+
+    private String toContactListJson(Collection<Integer> ids) {
+        JsonArray arr = new JsonArray();
+        for (Integer id : ids) {
+            if (id != null && id > 0) {
+                arr.add(id);
+            }
+        }
+        return gson.toJson(arr);
+    }
+
+    private Set<Integer> getContactIds(Connection conn, int userId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT contact_list FROM accounts WHERE user_id = ?")) {
+            ps.setInt(1, userId);
+            ResultSet rs = ps.executeQuery();
+            if (!rs.next()) {
+                return new LinkedHashSet<>();
+            }
+            return parseContactIds(rs.getString("contact_list"), userId);
+        }
+    }
+
+    private boolean isContactListNull(Connection conn, int userId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT contact_list FROM accounts WHERE user_id = ?")) {
+            ps.setInt(1, userId);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() && rs.getString("contact_list") == null;
+        }
+    }
+
+    private void saveContactIds(Connection conn, int userId, Set<Integer> ids) throws SQLException {
+        ids.remove(userId);
+        try (PreparedStatement ps = conn.prepareStatement("UPDATE accounts SET contact_list = ? WHERE user_id = ?")) {
+            ps.setString(1, toContactListJson(ids));
+            ps.setInt(2, userId);
+            ps.executeUpdate();
+        }
+    }
+
+    private void appendContactId(Connection conn, int userId, int contactId) throws SQLException {
+        if (userId <= 0 || contactId <= 0 || userId == contactId) {
+            return;
+        }
+        Set<Integer> ids = getContactIds(conn, userId);
+        if (ids.add(contactId)) {
+            saveContactIds(conn, userId, ids);
+        }
+    }
+
+    private Set<Integer> deriveInitialContacts(Connection conn, int userId, String acctType) throws SQLException {
+        Set<Integer> contacts = new LinkedHashSet<>();
+        contacts.addAll(queryContactIds(conn, """
+                SELECT DISTINCT CASE
+                    WHEN sender_id = ? THEN receiver_id
+                    WHEN receiver_id = ? THEN sender_id
+                    ELSE NULL
+                END AS contact_id
+                FROM messages
+                WHERE sender_id = ? OR receiver_id = ?
+                """, userId, userId, userId, userId));
+
+        if ("Student".equals(acctType)) {
+            contacts.addAll(queryContactIds(conn, """
+                    SELECT DISTINCT m.educator_id AS contact_id
+                    FROM module_progress mp
+                    JOIN modules m ON mp.mod_id = m.mod_id
+                    WHERE mp.student_id = ?
+                    """, userId));
+            contacts.addAll(queryContactIds(conn,
+                    "SELECT assigned_counselor AS contact_id FROM accounts WHERE user_id = ? AND assigned_counselor IS NOT NULL",
+                    userId));
+        } else if ("Parent".equals(acctType)) {
+            contacts.addAll(queryContactIds(conn,
+                    "SELECT user_id AS contact_id FROM accounts WHERE associated_id = ? AND acct_type = 'Student'",
+                    userId));
+            contacts.addAll(queryContactIds(conn, """
+                    SELECT DISTINCT s.assigned_counselor AS contact_id
+                    FROM accounts s
+                    WHERE s.associated_id = ? AND s.assigned_counselor IS NOT NULL
+                    """, userId));
+        } else if ("Counselor".equals(acctType)) {
+            contacts.addAll(queryContactIds(conn,
+                    "SELECT student_id AS contact_id FROM counselor_students WHERE counselor_id = ?",
+                    userId));
+            contacts.addAll(queryContactIds(conn,
+                    "SELECT user_id AS contact_id FROM accounts WHERE acct_type = 'Employer'"));
+        } else if ("Employer".equals(acctType)) {
+            contacts.addAll(queryContactIds(conn,
+                    "SELECT user_id AS contact_id FROM accounts WHERE acct_type = 'Counselor'"));
+        } else if ("University".equals(acctType)) {
+            contacts.addAll(queryContactIds(conn,
+                    "SELECT user_id AS contact_id FROM accounts WHERE acct_type = 'Admin'"));
+        } else if ("Educator".equals(acctType)) {
+            contacts.addAll(queryContactIds(conn, """
+                    SELECT DISTINCT mp.student_id AS contact_id
+                    FROM module_progress mp
+                    JOIN modules m ON mp.mod_id = m.mod_id
+                    WHERE m.educator_id = ?
+                    """, userId));
+        }
+
+        contacts.remove(userId);
+        return contacts;
+    }
+
+    private Set<Integer> queryContactIds(Connection conn, String sql, Integer... params) throws SQLException {
+        Set<Integer> ids = new LinkedHashSet<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            if (params != null) {
+                for (int i = 0; i < params.length; i++) {
+                    Integer p = params[i];
+                    if (p == null) ps.setNull(i + 1, Types.INTEGER);
+                    else ps.setInt(i + 1, p);
+                }
+            }
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                int id = rs.getInt(1);
+                if (!rs.wasNull() && id > 0) {
+                    ids.add(id);
+                }
+            }
+        }
+        return ids;
+    }
+
+    public boolean initializeContactListIfNull(int userId) {
+        try (Connection conn = getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                if (isContactListNull(conn, userId)) {
+                    String acctType;
+                    try (PreparedStatement ps = conn.prepareStatement("SELECT acct_type FROM accounts WHERE user_id = ?")) {
+                        ps.setInt(1, userId);
+                        ResultSet rs = ps.executeQuery();
+                        if (!rs.next()) {
+                            conn.rollback();
+                            return false;
+                        }
+                        acctType = rs.getString("acct_type");
+                    }
+                    saveContactIds(conn, userId, deriveInitialContacts(conn, userId, acctType));
+                }
+                conn.commit();
+                return true;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw new DataAccessException("Failed to initialize contact list", e);
+            }
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to initialize contact list", e);
+        }
+    }
+
+    public boolean addContactForUser(int userId, int contactId) {
+        try (Connection conn = getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                appendContactId(conn, userId, contactId);
+                conn.commit();
+                return true;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw new DataAccessException("Failed to add contact", e);
+            }
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to add contact", e);
+        }
+    }
+
+    public boolean addMutualContacts(int userA, int userB) {
+        try (Connection conn = getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                appendContactId(conn, userA, userB);
+                appendContactId(conn, userB, userA);
+                conn.commit();
+                return true;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw new DataAccessException("Failed to add mutual contacts", e);
+            }
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to add mutual contacts", e);
+        }
+    }
+
+    public List<HashMap<String, Object>> getContactsFromContactList(int userId) {
+        initializeContactListIfNull(userId);
+        try (Connection conn = getConnection()) {
+            Set<Integer> contactIds = getContactIds(conn, userId);
+            if (contactIds.isEmpty()) {
+                return List.of();
+            }
+
+            StringBuilder sql = new StringBuilder("SELECT user_id, first_name, last_name, acct_type, contact_info FROM accounts WHERE user_id IN (");
+            List<Integer> ids = new ArrayList<>(contactIds);
+            for (int i = 0; i < ids.size(); i++) {
+                if (i > 0) sql.append(',');
+                sql.append('?');
+            }
+            sql.append(") ORDER BY first_name, last_name, user_id");
+
+            List<HashMap<String, Object>> contacts = new ArrayList<>();
+            try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+                for (int i = 0; i < ids.size(); i++) {
+                    ps.setInt(i + 1, ids.get(i));
+                }
+                ResultSet rs = ps.executeQuery();
+                while (rs.next()) {
+                    contacts.add(contactFromRow(rs));
+                }
+            }
+
+            // Clean up stale IDs that no longer exist.
+            Set<Integer> existing = new LinkedHashSet<>();
+            for (HashMap<String, Object> c : contacts) {
+                existing.add((Integer) c.get("user_id"));
+            }
+            if (!existing.equals(contactIds)) {
+                saveContactIds(conn, userId, existing);
+            }
+
+            return contacts;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to retrieve contact_list contacts", e);
+        }
     }
 
     // ── public methods ───────────────────────────────────────────────────────
@@ -110,6 +377,20 @@ public class dbConnector {
                     ps2.executeUpdate();
                 }
 
+                if ("Parent".equals(acctType)) {
+                    if (associatedStudentId == null || associatedStudentId <= 0) {
+                        throw new SQLException("Parent registration requires a valid associated student ID");
+                    }
+                    try (PreparedStatement ps3 = conn.prepareStatement(
+                            "UPDATE accounts SET associated_id = ? WHERE user_id = ? AND acct_type = 'Student'")) {
+                        ps3.setInt(1, userId);
+                        ps3.setInt(2, associatedStudentId);
+                        if (ps3.executeUpdate() == 0) {
+                            throw new SQLException("Associated student account was not found");
+                        }
+                    }
+                }
+
                 conn.commit();
                 return true;
             } catch (Exception e) {
@@ -155,6 +436,21 @@ public class dbConnector {
         }
     }
 
+    public int countUnreadMessages(int receiverId) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT COUNT(*) AS unread_count FROM messages WHERE receiver_id = ? AND (isRead = FALSE OR isRead IS NULL)")) {
+            ps.setInt(1, receiverId);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getInt("unread_count");
+            }
+            return 0;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to count unread messages", e);
+        }
+    }
+
     public List<Message> searchConversationMessages(int userAId, int userBId) {
         List<Message> messages = new ArrayList<>();
         try (Connection conn = getConnection();
@@ -180,17 +476,40 @@ public class dbConnector {
         }
     }
 
+    public boolean markConversationMessagesAsRead(int receiverId, int senderId) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "UPDATE messages SET isRead = TRUE WHERE receiver_id = ? AND sender_id = ? AND (isRead = FALSE OR isRead IS NULL)")) {
+            ps.setInt(1, receiverId);
+            ps.setInt(2, senderId);
+            return ps.executeUpdate() >= 0;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to mark conversation messages as read", e);
+        }
+    }
+
     public boolean addMessage(Message msg) {
         String sql = msg.getConvoID() == -1
                 ? "INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)"
                 : "INSERT INTO messages (sender_id, receiver_id, content, conversation_id) VALUES (?, ?, ?, ?)";
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, msg.getSenderID());
-            ps.setInt(2, msg.getReceiverID());
-            ps.setString(3, msg.getContent());
-            if (msg.getConvoID() != -1) ps.setInt(4, msg.getConvoID());
-            return ps.executeUpdate() > 0;
+        try (Connection conn = getConnection()) {
+            conn.setAutoCommit(false);
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                appendContactId(conn, msg.getSenderID(), msg.getReceiverID());
+                appendContactId(conn, msg.getReceiverID(), msg.getSenderID());
+
+                ps.setInt(1, msg.getSenderID());
+                ps.setInt(2, msg.getReceiverID());
+                ps.setString(3, msg.getContent());
+                if (msg.getConvoID() != -1) ps.setInt(4, msg.getConvoID());
+
+                boolean inserted = ps.executeUpdate() > 0;
+                conn.commit();
+                return inserted;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
         } catch (SQLException e) {
             throw new DataAccessException("Failed to retrieve user from database", e);
         }
@@ -201,6 +520,7 @@ public class dbConnector {
         String safeType = (jobType == null || jobType.isBlank()) ? "job opportunity" : jobType;
         String content = "Counselor recommendation: You were matched with " + safeType +
                 " (Job #" + jobId + "). Reply here to contact the employer directly.";
+        addMutualContacts(studentId, employerId);
         return addMessage(new Message(employerId, studentId, content));
     }
 
@@ -283,12 +603,25 @@ public class dbConnector {
     }
 
     public boolean addStudentToModule(int studentID, int modID) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT INTO module_progress (student_id, mod_id) VALUES (?, ?)")) {
-            ps.setInt(1, studentID);
-            ps.setInt(2, modID);
-            return ps.executeUpdate() > 0;
+        try (Connection conn = getConnection()) {
+            conn.setAutoCommit(false);
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO module_progress (student_id, mod_id) VALUES (?, ?)")) {
+                ps.setInt(1, studentID);
+                ps.setInt(2, modID);
+                boolean added = ps.executeUpdate() > 0;
+
+                Integer educatorId = findEducatorForModule(modID);
+                if (educatorId != null && educatorId > 0) {
+                    appendContactId(conn, studentID, educatorId);
+                }
+
+                conn.commit();
+                return added;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            }
         } catch (SQLException e) {
             throw new DataAccessException("Failed to add modules to database", e);
         }
@@ -364,20 +697,26 @@ public class dbConnector {
     }
 
     public boolean updateAssessmentCompletion(int studentId, int assessmentId, boolean completed) {
+        return updateAssessmentCompletion(studentId, assessmentId, completed, null);
+    }
+
+    public boolean updateAssessmentCompletion(int studentId, int assessmentId, boolean completed, String submissionJson) {
         try (Connection conn = getConnection()) {
             try (PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE assessment_progress SET completed = ? WHERE student_id = ? AND assessment_id = ?")) {
+                    "UPDATE assessment_progress SET completed = ?, submission = ? WHERE student_id = ? AND assessment_id = ?")) {
                 ps.setBoolean(1, completed);
-                ps.setInt(2, studentId);
-                ps.setInt(3, assessmentId);
+                ps.setString(2, submissionJson);
+                ps.setInt(3, studentId);
+                ps.setInt(4, assessmentId);
                 if (ps.executeUpdate() > 0) return true;
             }
             try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO assessment_progress (student_id, assessment_id, grade, completed) VALUES (?, ?, ?, ?)")) {
+                    "INSERT INTO assessment_progress (student_id, assessment_id, grade, completed, submission) VALUES (?, ?, ?, ?, ?)")) {
                 ps.setInt(1, studentId);
                 ps.setInt(2, assessmentId);
                 ps.setInt(3, -1);
                 ps.setBoolean(4, completed);
+                ps.setString(5, submissionJson);
                 return ps.executeUpdate() > 0;
             }
         } catch (SQLException e) {
@@ -394,22 +733,18 @@ public class dbConnector {
                 a.associated_mod,
                 a.learning_path,
                 m.subject AS module_subject,
-                msg.content AS submission_content,
+                ap.submission AS submission_content,
                 ap.grade,
                 ap.completed
             FROM assessment_progress ap
             JOIN assessments a ON ap.assessment_id = a.assessment_id
             JOIN modules m ON a.associated_mod = m.mod_id
             LEFT JOIN accounts s ON s.user_id = ap.student_id
-            LEFT JOIN messages msg ON msg.id = (
-                SELECT MAX(m2.id) FROM messages m2
-                WHERE m2.sender_id = ap.student_id AND m2.receiver_id = m.educator_id
-            )
             WHERE m.educator_id = ?
             """;
 
-    public List<AssessmentSubmission> getPendingAssessmentSubmissionsForEducator(int educatorId) {
-        List<AssessmentSubmission> list = new ArrayList<>();
+    public List<Assessment> getPendingAssessmentSubmissionsForEducator(int educatorId) {
+        List<Assessment> list = new ArrayList<>();
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(ASSESSMENT_SUBMISSION_SELECT +
                      "AND ap.completed = TRUE AND (ap.grade IS NULL OR ap.grade < 0) ORDER BY ap.assessment_id, ap.student_id")) {
@@ -422,8 +757,8 @@ public class dbConnector {
         }
     }
 
-    public List<AssessmentSubmission> getGradedAssessmentSubmissionsForEducator(int educatorId) {
-        List<AssessmentSubmission> list = new ArrayList<>();
+    public List<Assessment> getGradedAssessmentSubmissionsForEducator(int educatorId) {
+        List<Assessment> list = new ArrayList<>();
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(ASSESSMENT_SUBMISSION_SELECT +
                      "AND ap.completed = TRUE AND ap.grade >= 0 ORDER BY ap.assessment_id DESC, ap.student_id")) {
@@ -552,6 +887,7 @@ public class dbConnector {
                     ps.setInt(2, student_id);
                     ps.executeUpdate();
                 }
+                appendContactId(conn, student_id, counselor_id);
                 conn.commit();
                 return true;
             } catch (SQLException e) {
@@ -647,103 +983,27 @@ public class dbConnector {
     }
 
     public List<HashMap<String, Object>> getStudentContacts(int studentID) {
-        try (Connection conn = getConnection()) {
-            List<HashMap<String, Object>> contacts = queryContacts(conn, """
-                    SELECT DISTINCT a.user_id, a.first_name, a.last_name, a.acct_type, a.contact_info
-                    FROM accounts a
-                    JOIN modules m ON a.user_id = m.educator_id
-                    JOIN module_progress mp ON m.mod_id = mp.mod_id
-                    WHERE mp.student_id = ? AND a.acct_type = 'Educator'
-                    """, studentID);
-            contacts.addAll(queryContacts(conn, """
-                    SELECT a.user_id, a.first_name, a.last_name, a.acct_type, a.contact_info
-                    FROM accounts a
-                    WHERE a.user_id = (SELECT assigned_counselor FROM accounts WHERE user_id = ?) AND a.acct_type = 'Counselor'
-                    """, studentID));
-            contacts.addAll(queryContacts(conn, """
-                    SELECT DISTINCT a.user_id, a.first_name, a.last_name, a.acct_type, a.contact_info
-                    FROM accounts a
-                    JOIN messages m ON (
-                        (m.sender_id = a.user_id AND m.receiver_id = ?)
-                        OR (m.receiver_id = a.user_id AND m.sender_id = ?)
-                    )
-                    WHERE a.acct_type = 'Employer'
-                    """, studentID));
-            return contacts;
-        } catch (SQLException e) {
-            throw new DataAccessException("Failed to retrieve student contacts from database", e);
-        }
+        return getContactsFromContactList(studentID);
     }
 
     public List<HashMap<String, Object>> getParentContacts(int parentID) {
-        try (Connection conn = getConnection()) {
-            List<HashMap<String, Object>> contacts = queryContacts(conn, """
-                    SELECT a.user_id, a.first_name, a.last_name, a.acct_type, a.contact_info
-                    FROM accounts a WHERE a.associated_id = ? AND a.acct_type = 'Student'
-                    """, parentID);
-            contacts.addAll(queryContacts(conn, """
-                    SELECT DISTINCT a.user_id, a.first_name, a.last_name, a.acct_type, a.contact_info
-                    FROM accounts a
-                    WHERE a.user_id = (SELECT assigned_counselor FROM accounts WHERE associated_id = ?) AND a.acct_type = 'Counselor'
-                    """, parentID));
-            return contacts;
-        } catch (SQLException e) {
-            throw new DataAccessException("Failed to retrieve parent contacts from database", e);
-        }
+        return getContactsFromContactList(parentID);
     }
 
     public List<HashMap<String, Object>> getCounselorContacts(int counselorID) {
-        try (Connection conn = getConnection()) {
-            List<HashMap<String, Object>> contacts = queryContacts(conn, """
-                    SELECT a.user_id, a.first_name, a.last_name, a.acct_type, a.contact_info
-                    FROM accounts a
-                    JOIN counselor_students cs ON a.user_id = cs.student_id
-                    WHERE cs.counselor_id = ? AND a.acct_type = 'Student'
-                    """, counselorID);
-            contacts.addAll(queryContacts(conn, """
-                    SELECT a.user_id, a.first_name, a.last_name, a.acct_type, a.contact_info
-                    FROM accounts a WHERE a.acct_type = 'Employer'
-                    """, null));
-            return contacts;
-        } catch (SQLException e) {
-            throw new DataAccessException("Failed to retrieve counselor contacts from database", e);
-        }
+        return getContactsFromContactList(counselorID);
     }
 
     public List<HashMap<String, Object>> getEmployerContacts(int employerID) {
-        try (Connection conn = getConnection()) {
-            return queryContacts(conn, """
-                    SELECT a.user_id, a.first_name, a.last_name, a.acct_type, a.contact_info
-                    FROM accounts a WHERE a.acct_type = 'Counselor'
-                    """, null);
-        } catch (SQLException e) {
-            throw new DataAccessException("Failed to retrieve employer contacts from database", e);
-        }
+        return getContactsFromContactList(employerID);
     }
 
     public List<HashMap<String, Object>> getUniversityContacts(int universityID) {
-        try (Connection conn = getConnection()) {
-            return queryContacts(conn, """
-                    SELECT a.user_id, a.first_name, a.last_name, a.acct_type, a.contact_info
-                    FROM accounts a WHERE a.acct_type = 'Admin'
-                    """, null);
-        } catch (SQLException e) {
-            throw new DataAccessException("Failed to retrieve university contacts from database", e);
-        }
+        return getContactsFromContactList(universityID);
     }
 
     public List<HashMap<String, Object>> getEducatorContacts(int educatorID) {
-        try (Connection conn = getConnection()) {
-            return queryContacts(conn, """
-                    SELECT DISTINCT a.user_id, a.first_name, a.last_name, a.acct_type, a.contact_info
-                    FROM accounts a
-                    JOIN module_progress mp ON a.user_id = mp.student_id
-                    JOIN modules m ON mp.mod_id = m.mod_id
-                    WHERE m.educator_id = ? AND a.acct_type = 'Student'
-                    """, educatorID);
-        } catch (SQLException e) {
-            throw new DataAccessException("Failed to retrieve educator contacts from database", e);
-        }
+        return getContactsFromContactList(educatorID);
     }
 
     public List<LearningModule> searchAllModulesDB() {
@@ -854,12 +1114,12 @@ public class dbConnector {
                 "Module Request - Student #" + studentId + " requested a module for learning path: " + requestedPath + "\nDetails: " + details));
     }
 
-    public boolean notifyCounselorOfJobProgramRequest(int studentId, int jobId, String details) {
+    public boolean notifyCounselorOfJobProgramRequest(int studentId, String details) {
         Integer counselorId = findCounselorForStudent(studentId);
         if (counselorId == null || counselorId == 0)
             throw new EntityNotFoundException("No counselor assigned to student #" + studentId);
         return addMessage(new Message(studentId, counselorId,
-                "Job Program Request - Student #" + studentId + " requested job program #" + jobId + "\nDetails: " + details));
+                "Job Program Request - Student #" + studentId + " requested job support.\nDetails: " + details));
     }
 
     public Integer findCounselorForStudent(int studentId) {
@@ -1004,6 +1264,7 @@ public class dbConnector {
                             throw new ReassignmentException("No replacement counselor available for student #" + studentId);
                         exec(conn, "INSERT INTO counselor_students (counselor_id, student_id) VALUES (?, ?)", replacement, studentId);
                         exec(conn, "UPDATE accounts SET assigned_counselor = ? WHERE user_id = ?", replacement, studentId);
+                        appendContactId(conn, studentId, replacement);
                     }
                 }
 

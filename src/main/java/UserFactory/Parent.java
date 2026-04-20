@@ -1,6 +1,7 @@
 package UserFactory;
 
 import OtherComponents.Assessment;
+import OtherComponents.StudentReportCard;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.util.HashMap;
@@ -39,6 +40,10 @@ public class Parent extends User {
 
     public void addGuardedStudent(int studentID) {
         this.guardedStudents.add(studentID);
+    }
+
+    public List<StudentReportCard> getChildReportCards() {
+        return buildStudentReportCards(this.guardedStudents);
     }
 
 }

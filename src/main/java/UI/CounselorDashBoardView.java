@@ -1,9 +1,7 @@
 package UI;
 
-import DatabaseController.dbConnector;
 import OtherComponents.Message;
 import UserFactory.Counselor;
-import Services.FetchProfileService;
 import javafx.geometry.*;
 import javafx.scene.*;
 import javafx.scene.control.*;
@@ -64,13 +62,12 @@ public class CounselorDashBoardView {
             noStudents.setStyle("-fx-font-size: 14; -fx-text-fill: #aaaaaa;");
             content.getChildren().addAll(title, noStudents);
         } else {
-            FetchProfileService profileService = new FetchProfileService();
             ScrollPane scrollPane = UIComponents.darkScrollPane();
             VBox studentsVBox = new VBox(10);
             studentsVBox.setPadding(new Insets(10));
 
             for (Integer studentId : studentIds) {
-                HashMap<String, Object> summary = profileService.getAccountSummary(studentId);
+                HashMap<String, Object> summary = counselor.getAccountSummary(studentId);
                 String studentName = (summary != null && summary.get("name") != null)
                         ? (String) summary.get("name")
                         : "Student #" + studentId;
@@ -131,11 +128,10 @@ public class CounselorDashBoardView {
         Button searchBtn = new Button("Search");
         VBox results = new VBox(8);
 
-        FetchProfileService service = new FetchProfileService();
         Runnable searchAction = () -> {
             results.getChildren().clear();
             String learningPath = "All".equals(pathFilter.getValue()) ? null : pathFilter.getValue();
-            List<java.util.HashMap<String, Object>> jobs = service.searchJobPrograms(learningPath, searchField.getText());
+            List<java.util.HashMap<String, Object>> jobs = counselor.searchJobPrograms(learningPath, searchField.getText());
 
             if (jobs.isEmpty()) {
                 Label noResults = new Label("No job programs found");
@@ -178,12 +174,11 @@ public class CounselorDashBoardView {
             return;
         }
 
-        FetchProfileService service = new FetchProfileService();
         ComboBox<String> studentPicker = new ComboBox<>();
         java.util.HashMap<String, Integer> labelToId = new java.util.HashMap<>();
 
         for (Integer studentId : assignedStudents) {
-            HashMap<String, Object> summary = service.getAccountSummary(studentId);
+            HashMap<String, Object> summary = counselor.getAccountSummary(studentId);
             String name = (summary != null && summary.get("name") != null)
                     ? (String) summary.get("name")
                     : "Student #" + studentId;
@@ -235,7 +230,7 @@ public class CounselorDashBoardView {
                         + (note.getText().isBlank() ? "" : ("Counselor Note: " + note.getText().trim()));
 
                 boolean sentToStudent = counselor.sendMessage(studentId, content);
-                boolean employerLinked = new dbConnector().linkEmployerContactForStudent(
+                boolean employerLinked = counselor.getDbConnector().linkEmployerContactForStudent(
                         employerId, studentId, counselor.getId(), jobId, jobType
                 );
 

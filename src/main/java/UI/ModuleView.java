@@ -2,10 +2,8 @@ package UI;
 
 import UserFactory.*;
 import OtherComponents.LearningModule;
-import Services.FetchProfileService;
 import Services.KeyboardTtsService;
 import Services.UIRefreshService;
-import DatabaseController.dbConnector;
 import atlantafx.base.theme.PrimerDark;
 import javafx.beans.value.ChangeListener;
 import javafx.geometry.*;
@@ -55,8 +53,6 @@ public class ModuleView {
         Label contentTitle = new Label("Available Modules");
         contentTitle.setStyle("-fx-font-size: 18; -fx-font-weight: bold; -fx-text-fill: #ffffff;");
 
-        FetchProfileService profileService = new FetchProfileService();
-
         // Student keeps enrolled-only behavior; staff roles can browse all and filter by path.
         Integer selectedModuleId = UserContext.getInstance().getSelectedModuleId();
         ComboBox<String> filterCombo = new ComboBox<>();
@@ -81,27 +77,39 @@ public class ModuleView {
         VBox modulesVBox = new VBox(15);
         modulesVBox.setPadding(new Insets(10));
         final java.util.List<LearningModule>[] displayedModules = new java.util.List[]{java.util.List.of()};
+        final Button[] narratedCompleteButton = new Button[1];
+        final LearningModule[] narratedModule = new LearningModule[1];
 
         Runnable refreshModules = () -> {
             modulesVBox.getChildren().clear();
+            narratedCompleteButton[0] = null;
+            narratedModule[0] = null;
             java.util.List<LearningModule> modules;
 
             if (currentUser instanceof Student) {
-                modules = new dbConnector().searchModulesDB(currentUser.getId(), "Student");
+                modules = currentUser.getDbConnector().searchModulesDB(currentUser.getId(), "Student");
                 if (selectedModuleId != null) {
                     modules = modules.stream().filter(m -> m.getModuleID() == selectedModuleId).toList();
                 }
             } else if (currentUser instanceof Educator || currentUser instanceof Counselor || currentUser instanceof Employer || currentUser instanceof Admin) {
-                modules = profileService.browseModules(filterCombo.getValue());
+                modules = currentUser.browseModules(filterCombo.getValue());
             } else {
                 modules = java.util.List.of();
             }
 
             displayedModules[0] = modules;
+            LearningModule narrationTarget = findNarrationTarget(modules, selectedModuleId);
 
             if (!modules.isEmpty()) {
                 for (LearningModule module : modules) {
-                    VBox moduleCard = createModuleDetailCard(module, currentUser instanceof Student, router);
+                    boolean shouldTrackCompletion = currentUser instanceof Student && narrationTarget != null
+                            && module.getModuleID() == narrationTarget.getModuleID();
+                    VBox moduleCard = createModuleDetailCard(module, currentUser instanceof Student, router, button -> {
+                        if (shouldTrackCompletion) {
+                            narratedCompleteButton[0] = button;
+                            narratedModule[0] = module;
+                        }
+                    });
                     modulesVBox.getChildren().add(moduleCard);
                 }
             } else {
@@ -141,34 +149,32 @@ public class ModuleView {
                         return new KeyboardTtsService.ReadingContent("No modules are available right now.");
                     }
 
-                    LearningModule target = null;
-                    if (selectedModuleId != null) {
-                        for (LearningModule m : modules) {
-                            if (m.getModuleID() == selectedModuleId) {
-                                target = m;
-                                break;
-                            }
-                        }
-                    }
-                    if (target == null && modules.size() == 1) {
-                        target = modules.get(0);
-                    }
-                    if (target == null) {
-                        target = modules.get(0);
-                    }
+                    LearningModule target = findNarrationTarget(modules, selectedModuleId);
 
                     String text = "Module " + target.getSubject() + ". Learning path " + target.getLearningPath() + ". "
                             + "Current progress " + target.getProgress() + " percent. "
-                            + target.getContent() + " "
-                            + "Press F2 to pause or resume. Press plus to skip forward and minus to go back a sentence.";
+                            + "For Pause press f2, for rewind press f3, and for fast forward press f4. "
+                            + target.getContent();
 
                     return new KeyboardTtsService.ReadingContent(
                             text,
                             target.getModuleID(),
                             target.getProgress()
                     );
+                },
+                () -> {
+                    if (narratedCompleteButton[0] != null && narratedModule[0] != null) {
+                        narratedCompleteButton[0].requestFocus();
+                    }
                 }
         );
+
+        scene.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> {
+            if (e.getCode() == javafx.scene.input.KeyCode.ESCAPE) {
+                router.goToCurrentUserDashboard();
+                e.consume();
+            }
+        });
 
         UIRefreshService.UIRefreshListener modulesListener = (updateType, data) -> {
             if ("MODULES_UPDATED".equals(updateType)) {
@@ -195,7 +201,10 @@ public class ModuleView {
         return scene;
     }
 
-    private static VBox createModuleDetailCard(LearningModule module, boolean showProgress, SceneRouter router) {
+    private static VBox createModuleDetailCard(LearningModule module,
+                                               boolean showProgress,
+                                               SceneRouter router,
+                                               java.util.function.Consumer<Button> completeButtonConsumer) {
         VBox card = new VBox(12);
         card.setPadding(new Insets(20));
         card.setStyle("-fx-background-color: #161B22; -fx-border-radius: 8; -fx-border-color: #30363D;");
@@ -224,6 +233,14 @@ public class ModuleView {
             HBox buttonBox = new HBox(10);
             Button continueBtn = new Button("Continue Learning");
             Button completeBtn = new Button("Mark Complete");
+            completeBtn.focusedProperty().addListener((obs, oldValue, focused) -> {
+                if (focused) {
+                    KeyboardTtsService.getInstance().speakNow("press enter to mark this module as complete.");
+                }
+            });
+            if (completeButtonConsumer != null) {
+                completeButtonConsumer.accept(completeBtn);
+            }
 
             continueBtn.setOnAction(e -> {
                 try {
@@ -232,7 +249,7 @@ public class ModuleView {
                         return;
                     }
                     int nextProgress = Math.min(100, module.getProgress() + 10);
-                    boolean updated = new dbConnector().updateModuleProgress(currentUser.getId(), module.getModuleID(), nextProgress);
+                    boolean updated = ((Student) currentUser).updateModuleProgress(module.getModuleID(), nextProgress);
                     showInfo(updated ? "Progress updated to " + nextProgress + "%" : "Progress update failed.");
                     if (updated) {
                         router.goToModules();
@@ -248,7 +265,7 @@ public class ModuleView {
                     if (!(currentUser instanceof Student)) {
                         return;
                     }
-                    boolean updated = new dbConnector().updateModuleProgress(currentUser.getId(), module.getModuleID(), 100);
+                    boolean updated = ((Student) currentUser).updateModuleProgress(module.getModuleID(), 100);
                     showInfo(updated ? "Module marked complete." : "Could not mark module complete.");
                     if (updated) {
                         router.goToModules();
@@ -266,10 +283,21 @@ public class ModuleView {
         return card;
     }
 
+    private static LearningModule findNarrationTarget(java.util.List<LearningModule> modules, Integer selectedModuleId) {
+        if (modules == null || modules.isEmpty()) {
+            return null;
+        }
+        if (selectedModuleId != null) {
+            for (LearningModule module : modules) {
+                if (module.getModuleID() == selectedModuleId) {
+                    return module;
+                }
+            }
+        }
+        return modules.get(0);
+    }
+
     private static void showInfo(String message) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
+        UIComponents.showInfo(message);
     }
 }

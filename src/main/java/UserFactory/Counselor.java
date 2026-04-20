@@ -49,4 +49,8 @@ public class Counselor extends User {
         return DB.addStudentToModule(studentId, moduleId);
     }
 
+    public List<HashMap<String, Object>> searchJobPrograms(String learningPath, String keyword) {
+        return DB.searchAllJobProgramsDB(learningPath, keyword);
+    }
+
 }

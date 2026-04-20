@@ -1,13 +1,19 @@
 package UI;
 
+import Services.KeyboardTtsService;
 import UserFactory.User;
 import atlantafx.base.theme.PrimerDark;
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * Shared UI component builders used across all dashboard and view classes.
@@ -148,7 +154,7 @@ public final class UIComponents {
         Button viewBtn = new Button("View Messages");
         viewBtn.setOnAction(e -> router.goToInbox());
 
-        int count = user.checkInbox() == null ? 0 : user.checkInbox().size();
+        int count = user.getUnreadMessageCount();
         String text = count > 0
                 ? "You have " + count + " new message" + (count == 1 ? "" : "s")
                 : "No new messages";
@@ -215,6 +221,7 @@ public final class UIComponents {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setHeaderText(null);
         alert.setContentText(message);
+        preparePopupForStudentTts(alert);
         alert.showAndWait();
     }
 
@@ -223,7 +230,136 @@ public final class UIComponents {
         alert.setTitle(title);
         alert.setHeaderText(null);
         alert.setContentText(message);
+        preparePopupForStudentTts(alert);
         alert.showAndWait();
+    }
+
+    public static void preparePopupForStudentTts(Dialog<?> dialog) {
+        if (dialog == null || !isStudentPopupTtsAllowed()) {
+            return;
+        }
+        dialog.setOnShown(event -> {
+            if (!isStudentPopupTtsAllowed()) {
+                return;
+            }
+            String narration = buildDialogNarration(dialog);
+            if (!narration.isBlank()) {
+                KeyboardTtsService.getInstance().speakNow(narration);
+            }
+        });
+    }
+
+    private static boolean isStudentPopupTtsAllowed() {
+        User currentUser = UserContext.getInstance().getCurrentUser();
+        return currentUser != null && "Student".equals(currentUser.getAcctType());
+    }
+
+    private static String buildDialogNarration(Dialog<?> dialog) {
+        StringBuilder text = new StringBuilder("Popup window. ");
+        appendIfPresent(text, dialog.getTitle());
+        appendIfPresent(text, dialog.getHeaderText());
+        appendIfPresent(text, dialog.getContentText());
+
+        DialogPane pane = dialog.getDialogPane();
+        if (pane != null) {
+            appendIfPresent(text, extractReadableText(pane.getContent()));
+            appendIfPresent(text, extractReadableText(pane.getExpandableContent()));
+
+            String actions = pane.getButtonTypes().stream()
+                    .map(ButtonType::getText)
+                    .filter(label -> label != null && !label.isBlank())
+                    .distinct()
+                    .reduce((left, right) -> left + ", " + right)
+                    .orElse("");
+            if (!actions.isBlank()) {
+                appendIfPresent(text, "Available actions: " + actions + ".");
+            }
+        }
+
+        return text.toString().trim();
+    }
+
+    private static String extractReadableText(Node node) {
+        if (node == null) {
+            return "";
+        }
+
+        Set<String> parts = new LinkedHashSet<>();
+        collectReadableText(node, parts);
+        return String.join(" ", parts).trim();
+    }
+
+    private static void collectReadableText(Node node, Set<String> parts) {
+        if (node == null) {
+            return;
+        }
+
+        if (node instanceof Labeled labeled) {
+            addPart(parts, labeled.getText());
+        }
+
+        if (node instanceof TextInputControl input) {
+            addPart(parts, input.getPromptText());
+            if (input.getText() != null && !input.getText().isBlank()) {
+                addPart(parts, "Current value: " + input.getText().trim());
+            }
+        }
+
+        if (node instanceof ComboBoxBase<?> comboBox) {
+            Object value = comboBox.getValue();
+            if (value != null) {
+                addPart(parts, "Current selection: " + value);
+            }
+        }
+
+        if (node instanceof ScrollPane scrollPane) {
+            collectReadableText(scrollPane.getContent(), parts);
+        }
+
+        if (node instanceof TitledPane titledPane) {
+            addPart(parts, titledPane.getText());
+            collectReadableText(titledPane.getContent(), parts);
+        }
+
+        if (node instanceof Accordion accordion) {
+            for (TitledPane pane : accordion.getPanes()) {
+                collectReadableText(pane, parts);
+            }
+        }
+
+        if (node instanceof Parent parent) {
+            for (Node child : parent.getChildrenUnmodifiable()) {
+                collectReadableText(child, parts);
+            }
+        }
+    }
+
+    private static void addPart(Set<String> parts, String value) {
+        if (value == null) {
+            return;
+        }
+        String clean = value.replace('\r', ' ').replace('\n', ' ').trim();
+        if (!clean.isBlank()) {
+            parts.add(clean);
+        }
+    }
+
+    private static void appendIfPresent(StringBuilder builder, String value) {
+        if (value == null) {
+            return;
+        }
+        String clean = value.replace('\r', ' ').replace('\n', ' ').trim();
+        if (clean.isBlank()) {
+            return;
+        }
+        if (builder.length() > 0 && !Character.isWhitespace(builder.charAt(builder.length() - 1))) {
+            builder.append(' ');
+        }
+        builder.append(clean);
+        if (!clean.endsWith(".") && !clean.endsWith("!") && !clean.endsWith("?")) {
+            builder.append('.');
+        }
+        builder.append(' ');
     }
 
     // ── Learning-path ComboBox ─────────────────────────────────────────────────

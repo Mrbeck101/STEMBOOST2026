@@ -1,7 +1,6 @@
 package UI;
 
 import UserFactory.Student;
-import DatabaseController.dbConnector;
 import OtherComponents.LearningModule;
 import OtherComponents.Assessment;
 import Services.KeyboardTtsService;
@@ -26,16 +25,21 @@ public class StudentDashBoardView {
 
         UIRefreshService.getInstance().startPolling(student);
 
+        Button[] inboxViewButtonRef = new Button[1];
+
         TabPane tabPane = new TabPane();
         tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
+        Tab dashboardTab = new Tab("Dashboard", createDashboardContent(student));
         Tab modulesTab = new Tab("Learning Modules", createModulesContent(student, router));
+        Tab assessmentsTab = new Tab("Assessments", createAssessmentsContent(student, router));
+        Tab inboxTab = new Tab("Inbox", createInboxContent(student, router, inboxViewButtonRef));
 
         tabPane.getTabs().addAll(
-                new Tab("Dashboard", createDashboardContent(student)),
+                dashboardTab,
                 modulesTab,
-                new Tab("Assessments", createAssessmentsContent(student, router)),
-                new Tab("Inbox", UIComponents.inboxTab(student, router))
+                assessmentsTab,
+                inboxTab
         );
 
         // Student top bar includes university subtitle
@@ -48,10 +52,44 @@ public class StudentDashBoardView {
                 scene,
                 KeyboardTtsService.AccessMode.STUDENT_ONLY,
                 () -> new KeyboardTtsService.ReadingContent(
-                        "Student dashboard. Tabs include dashboard, learning modules, assessments, and inbox. " +
-                        "Press F1 to toggle text to speech. Press F2 to pause or resume. Press plus to skip forward one sentence and minus to go back one sentence."
-                )
+                        buildDashboardNarration(student)
+                ),
+                tabPane::requestFocus
         );
+
+        tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, selectedTab) -> {
+            if (selectedTab == null) {
+                return;
+            }
+
+            KeyboardTtsService tts = KeyboardTtsService.getInstance();
+            if (selectedTab == dashboardTab) {
+                tts.speakNow(buildDashboardNarration(student));
+            } else if (selectedTab == modulesTab) {
+                tts.speakNow("You are currently on learning modules, you can Request a new learning Module or request job support from your counselor, as well as go through your active modules");
+            } else if (selectedTab == assessmentsTab) {
+                tts.speakNow(buildAssessmentNarration(student));
+            } else if (selectedTab == inboxTab) {
+                int newMessages = student.getUnreadMessageCount();
+                if (inboxViewButtonRef[0] != null) {
+                    inboxViewButtonRef[0].requestFocus();
+                }
+                tts.speakNow("You have " + newMessages + " new message" + (newMessages == 1 ? "" : "s") + ". If you want to see your inbox press enter");
+            }
+        });
+
+        scene.addEventFilter(javafx.scene.input.KeyEvent.KEY_PRESSED, e -> {
+            if (e.getCode() != javafx.scene.input.KeyCode.ESCAPE) {
+                return;
+            }
+
+            if (tabPane.getSelectionModel().getSelectedItem() == dashboardTab) {
+                router.goToLogin();
+            } else {
+                tabPane.getSelectionModel().select(dashboardTab);
+            }
+            e.consume();
+        });
 
         UIRefreshService.UIRefreshListener modulesListener = (updateType, data) -> {
             if ("MODULES_UPDATED".equals(updateType)) {
@@ -96,7 +134,7 @@ public class StudentDashBoardView {
 
         welcomeCard.getChildren().addAll(welcomeTitle, learningPathLabel, progressLabel);
 
-        List<LearningModule> modules = new dbConnector().searchModulesDB(student.getId(), "Student");
+        List<LearningModule> modules = student.getDbConnector().searchModulesDB(student.getId(), "Student");
         int activeModules = modules == null ? 0 : modules.size();
         List<Assessment> assessments = student.getAssessmentResults();
         int pendingAssessments = assessments == null ? 0 : (int) assessments.stream().filter(a -> !a.isCompleted()).count();
@@ -122,8 +160,10 @@ public class StudentDashBoardView {
 
         Button requestModuleBtn = new Button("Request New Learning Module");
         requestModuleBtn.setOnAction(e -> showModuleRequestDialog(student));
-        Button requestJobBtn = new Button("Request Job Program");
+        Button requestJobBtn = new Button("Request Job Module");
         requestJobBtn.setOnAction(e -> showJobRequestDialog(student));
+        addFocusNarration(requestModuleBtn, "If you would like to request a new learning modules press Enter");
+        addFocusNarration(requestJobBtn, "If you would like to request job support from your counselor press enter");
 
         List<LearningModule> modules = student.getLearningModules();
 
@@ -170,6 +210,8 @@ public class StudentDashBoardView {
 
         Button openModuleBtn = new Button("Open Module");
         openModuleBtn.setOnAction(e -> { UserContext.getInstance().setSelectedModuleId(module.getModuleID()); router.goToModules(); });
+        addFocusNarration(openModuleBtn,
+                module.getSubject() + ", " + module.getProgress() + " percent completed, if you wish to continue this module press enter");
 
         card.getChildren().addAll(moduleTitle, modulePath, progressBar, progressLabel, openModuleBtn);
         return card;
@@ -234,20 +276,14 @@ public class StudentDashBoardView {
         takeButton.setAccessibleText("Take this assessment");
         takeButton.setOnAction(e -> {
             Student currentStudent = (Student) UserContext.getInstance().getCurrentUser();
-            String responses = AssessmentFormRenderer.collectStudentResponses(assessment);
-            if (responses == null) return;
+            String submissionJson = AssessmentFormRenderer.collectStudentResponses(assessment);
+            if (submissionJson == null) return;
             try {
-                Integer educatorId = new dbConnector().findEducatorForModule(assessment.getModuleID());
-                if (educatorId == null) { UIComponents.showInfo("Could not locate the educator for this assessment."); return; }
-                String submissionMessage = "Assessment " + assessment.getAssessmentID() + " Submitted for Module: " + moduleSubject;
-                boolean sent = currentStudent.sendMessage(educatorId, submissionMessage);
-                if (sent) {
-                    boolean markedComplete = new dbConnector().updateAssessmentCompletion(currentStudent.getId(), assessment.getAssessmentID(), true);
-                    UIComponents.showInfo(markedComplete ? "Assessment responses submitted successfully." : "Responses sent, but completion state was not updated.");
-                    if (markedComplete) router.goToDashboard(currentStudent.getId(), "Student");
-                } else {
-                    UIComponents.showInfo("Failed to submit assessment.");
-                }
+                boolean markedComplete = currentStudent.updateAssessmentCompletion(assessment.getAssessmentID(), true, submissionJson);
+                UIComponents.showInfo(markedComplete
+                        ? "Assessment responses submitted successfully."
+                        : "Could not save your assessment submission.");
+                if (markedComplete) router.goToDashboard(currentStudent.getId(), "Student");
             } catch (Exception ex) {
                 UIComponents.showInfo("Failed to submit assessment: " + ex.getMessage());
             }
@@ -262,6 +298,7 @@ public class StudentDashBoardView {
         pathDialog.setTitle("Module Request");
         pathDialog.setHeaderText("Request a new learning module");
         pathDialog.setContentText("Learning path:");
+        UIComponents.preparePopupForStudentTts(pathDialog);
         pathDialog.showAndWait().ifPresent(path -> {
             boolean sent = student.requestLearningModule(path, "Requested from student dashboard");
             UIComponents.showInfo(sent ? "Request sent to counselor." : "Failed to send request.");
@@ -269,17 +306,75 @@ public class StudentDashBoardView {
     }
 
     private static void showJobRequestDialog(Student student) {
-        TextInputDialog jobDialog = new TextInputDialog();
-        jobDialog.setTitle("Job Program Request");
-        jobDialog.setHeaderText("Request a job program");
-        jobDialog.setContentText("Job Program ID:");
-        jobDialog.showAndWait().ifPresent(value -> {
-            try {
-                int jobId = Integer.parseInt(value.trim());
-                boolean sent = student.requestWorkProgram(jobId, "Requested from student dashboard");
-                UIComponents.showInfo(sent ? "Request sent to counselor." : "Failed to send request.");
-            } catch (NumberFormatException ex) {
-                UIComponents.showInfo("Please enter a valid numeric job program ID.");
+        try {
+            boolean sent = student.requestWorkProgram("Student requested job support from the dashboard.");
+            UIComponents.showInfo(sent
+                    ? "A request has been sent to your counselor."
+                    : "Failed to send your request to your counselor.");
+        } catch (Exception ex) {
+            UIComponents.showInfo("Failed to send your request to your counselor: " + ex.getMessage());
+        }
+    }
+
+    private static VBox createInboxContent(Student student, SceneRouter router, Button[] inboxViewButtonRef) {
+        VBox content = UIComponents.contentBox(15);
+
+        Label title = UIComponents.sectionTitle("Inbox");
+        Button viewBtn = new Button("View Messages");
+        viewBtn.setOnAction(e -> router.goToInbox());
+        addFocusNarration(viewBtn, "If you want to see your inbox press enter");
+
+        int count = student.getUnreadMessageCount();
+        Label countLabel = new Label(count > 0
+                ? "You have " + count + " new message" + (count == 1 ? "" : "s")
+                : "No new messages");
+        countLabel.setStyle("-fx-font-size: 14; -fx-text-fill: #aaaaaa;");
+
+        inboxViewButtonRef[0] = viewBtn;
+        content.getChildren().addAll(title, viewBtn, countLabel);
+        return content;
+    }
+
+    private static String buildDashboardNarration(Student student) {
+        List<LearningModule> modules = student.getDbConnector().searchModulesDB(student.getId(), "Student");
+        int activeModules = modules == null ? 0 : modules.size();
+        List<Assessment> assessments = student.getAssessmentResults();
+        int pendingAssessments = assessments == null ? 0 : (int) assessments.stream().filter(a -> !a.isCompleted()).count();
+        return "You are currently on your dashboard, their are 4 tabs that being Dashboard, Learning Modules, Assessments, and Inbox. You can use your arrow keys to navigate through these menus. "
+                + "You currently have " + activeModules + " active module" + (activeModules == 1 ? "" : "s")
+                + " and " + pendingAssessments + " pending assessment" + (pendingAssessments == 1 ? "" : "s") + ".";
+    }
+
+    private static String buildAssessmentNarration(Student student) {
+        List<Assessment> assessments = student.getAssessmentResults();
+        if (assessments == null || assessments.isEmpty()) {
+            return "You currently do not have any assessments available.";
+        }
+
+        List<Assessment> pending = assessments.stream().filter(a -> !a.isCompleted()).toList();
+        List<Assessment> completed = assessments.stream().filter(Assessment::isCompleted).toList();
+        StringBuilder text = new StringBuilder("You are currently on assessments. ");
+        List<Assessment> target = pending.isEmpty() ? completed : pending;
+        for (Assessment assessment : target) {
+            String subject = (assessment.getModuleSubject() == null || assessment.getModuleSubject().isBlank())
+                    ? "Module " + assessment.getModuleID()
+                    : assessment.getModuleSubject();
+            text.append("Assessment ").append(assessment.getAssessmentID())
+                    .append(" for ").append(subject).append(". ");
+            if (assessment.isCompleted()) {
+                text.append("Completed with grade ")
+                        .append(assessment.getGrade() >= 0 ? assessment.getGrade() + " percent. " : "not yet graded. ");
+            } else {
+                text.append("Pending. ");
+            }
+        }
+        return text.toString();
+    }
+
+    private static void addFocusNarration(Control control, String message) {
+        control.focusedProperty().addListener((obs, oldValue, focused) -> {
+            if (focused) {
+                KeyboardTtsService.getInstance().speakNow(message);
             }
         });
     }

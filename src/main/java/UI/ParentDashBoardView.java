@@ -1,6 +1,5 @@
 package UI;
 
-import Services.FetchProfileService;
 import UserFactory.Parent;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
@@ -63,10 +62,8 @@ public class ParentDashBoardView {
             ScrollPane scrollPane = UIComponents.darkScrollPane();
             VBox childrenVBox = new VBox(10);
             childrenVBox.setPadding(new Insets(10));
-            FetchProfileService service = new FetchProfileService();
-
             for (Integer childId : childIds) {
-                HashMap<String, Object> summary = service.getAccountSummary(childId);
+                HashMap<String, Object> summary = parent.getAccountSummary(childId);
                 String childName = summary != null && summary.get("name") != null
                         ? (String) summary.get("name")
                         : "Student #" + childId;
@@ -101,12 +98,11 @@ public class ParentDashBoardView {
     }
 
     private static VBox createReportCardsContent(Parent parent, SceneRouter router) {
-        FetchProfileService service = new FetchProfileService();
         return StudentReportCardView.createReportTab(
                 "Child Report Cards",
                 "Generate a progress report for each student linked to your parent account. Reports summarize learning path, enrolled modules, module progress, and assessment progress.",
                 "No linked student report cards are available yet.",
-                () -> service.getParentReportCards(parent.getId()),
+                parent::getChildReportCards,
                 router
         );
     }

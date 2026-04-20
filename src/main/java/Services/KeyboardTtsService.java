@@ -1,6 +1,5 @@
 package Services;
 
-import DatabaseController.dbConnector;
 import UI.UserContext;
 import UserFactory.User;
 import javafx.application.Platform;
@@ -19,14 +18,19 @@ import java.util.function.Supplier;
  * Keyboard-driven TTS service.
  * Toggle: F1
  * Pause/Resume: F2
- * Next sentence: +
- * Previous sentence: -
+ * Next sentence: F4
+ * Previous sentence: F3
  */
 public class KeyboardTtsService {
 
     public enum AccessMode {
         PUBLIC_TOGGLE,
         STUDENT_ONLY
+    }
+
+    public enum NavigationMode {
+        SENTENCE,
+        NONE
     }
 
     public static final class ReadingContent {
@@ -60,9 +64,8 @@ public class KeyboardTtsService {
     private static KeyboardTtsService instance;
 
     private final WebEngine engine;
-    private final dbConnector db = new dbConnector();
 
-    private boolean enabled = false;
+    private boolean enabled = true;
     private boolean paused = false;
 
     private List<String> sentences = List.of();
@@ -75,6 +78,9 @@ public class KeyboardTtsService {
 
     private Supplier<ReadingContent> contentSupplier;
     private AccessMode accessMode = AccessMode.PUBLIC_TOGGLE;
+    private NavigationMode navigationMode = NavigationMode.SENTENCE;
+    private Runnable sceneReadingCompleteHandler;
+    private Runnable readingCompleteHandler;
 
     private boolean speechCapabilityChecked;
     private boolean webSpeechSupported;
@@ -131,8 +137,23 @@ public class KeyboardTtsService {
     }
 
     public void bindScene(Scene scene, AccessMode mode, Supplier<ReadingContent> supplier) {
+        bindScene(scene, mode, NavigationMode.SENTENCE, supplier, null);
+    }
+
+    public void bindScene(Scene scene, AccessMode mode, NavigationMode navMode, Supplier<ReadingContent> supplier) {
+        bindScene(scene, mode, navMode, supplier, null);
+    }
+
+    public void bindScene(Scene scene, AccessMode mode, Supplier<ReadingContent> supplier, Runnable onReadingComplete) {
+        bindScene(scene, mode, NavigationMode.SENTENCE, supplier, onReadingComplete);
+    }
+
+    public void bindScene(Scene scene, AccessMode mode, NavigationMode navMode, Supplier<ReadingContent> supplier, Runnable onReadingComplete) {
         this.accessMode = mode;
+        this.navigationMode = navMode == null ? NavigationMode.SENTENCE : navMode;
         this.contentSupplier = supplier;
+        this.sceneReadingCompleteHandler = onReadingComplete;
+        this.readingCompleteHandler = onReadingComplete;
 
         scene.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
             if (!isToggleAllowed()) {
@@ -155,13 +176,13 @@ public class KeyboardTtsService {
                 return;
             }
 
-            if (isForwardKey(e)) {
+            if (navigationMode == NavigationMode.SENTENCE && isForwardKey(e)) {
                 skipForward();
                 e.consume();
                 return;
             }
 
-            if (isBackKey(e)) {
+            if (navigationMode == NavigationMode.SENTENCE && isBackKey(e)) {
                 skipBackward();
                 e.consume();
             }
@@ -175,6 +196,62 @@ public class KeyboardTtsService {
     public void onSceneExit() {
         commitModuleProgressIfNeeded(false);
         cancelSpeech();
+        contentSupplier = null;
+        sentences = List.of();
+        sentenceIndex = 0;
+        paused = false;
+        speaking = false;
+        activeModuleId = null;
+        activeModuleProgress = null;
+        moduleProgressCommitted = false;
+        sceneReadingCompleteHandler = null;
+        readingCompleteHandler = null;
+    }
+
+    public boolean isEnabled() {
+        return enabled && isReadControlsAllowed();
+    }
+
+    public void refreshCurrentSceneReading() {
+        if (enabled && isReadControlsAllowed()) {
+            loadFromSupplierAndStart(true);
+        }
+    }
+
+    public void speakNow(String text) {
+        speakNow(new ReadingContent(text), null);
+    }
+
+    public void speakNow(String text, Runnable onReadingComplete) {
+        speakNow(new ReadingContent(text), onReadingComplete);
+    }
+
+    public void speakNow(ReadingContent content) {
+        speakNow(content, null);
+    }
+
+    public void speakNow(ReadingContent content, Runnable onReadingComplete) {
+        if (!enabled || !isReadControlsAllowed() || content == null) {
+            if (onReadingComplete != null) {
+                Platform.runLater(onReadingComplete);
+            }
+            return;
+        }
+
+        cancelSpeech();
+        List<String> parsed = splitSentences(content.text());
+        if (parsed.isEmpty()) {
+            parsed = List.of("No readable content is currently available.");
+        }
+
+        this.sentences = parsed;
+        this.sentenceIndex = 0;
+        this.activeModuleId = content.moduleId();
+        this.activeModuleProgress = content.moduleProgress();
+        this.moduleProgressCommitted = false;
+        this.paused = false;
+        this.readingCompleteHandler = onReadingComplete != null ? onReadingComplete : sceneReadingCompleteHandler;
+        startCurrentSentence();
     }
 
     private boolean isToggleAllowed() {
@@ -201,11 +278,11 @@ public class KeyboardTtsService {
     }
 
     private boolean isForwardKey(KeyEvent e) {
-        return e.getCode() == KeyCode.ADD || e.getCode() == KeyCode.PLUS || e.getCode() == KeyCode.EQUALS;
+        return e.getCode() == KeyCode.F4;
     }
 
     private boolean isBackKey(KeyEvent e) {
-        return e.getCode() == KeyCode.SUBTRACT || e.getCode() == KeyCode.MINUS;
+        return e.getCode() == KeyCode.F3;
     }
 
     private void toggle() {
@@ -268,6 +345,7 @@ public class KeyboardTtsService {
         this.activeModuleId = content.moduleId();
         this.activeModuleProgress = content.moduleProgress();
         this.moduleProgressCommitted = false;
+        this.readingCompleteHandler = sceneReadingCompleteHandler;
 
         if (restartFromBeginning || changedText || sentenceIndex >= sentences.size()) {
             this.sentenceIndex = 0;
@@ -390,6 +468,13 @@ public class KeyboardTtsService {
         sentenceIndex++;
         if (sentenceIndex >= sentences.size()) {
             commitModuleProgressIfNeeded(true);
+            Runnable onComplete = readingCompleteHandler;
+            if (onComplete != null) {
+                Platform.runLater(onComplete);
+            }
+            if (readingCompleteHandler != sceneReadingCompleteHandler) {
+                readingCompleteHandler = sceneReadingCompleteHandler;
+            }
             return;
         }
         if (!paused && enabled) {
@@ -400,20 +485,31 @@ public class KeyboardTtsService {
     private void cancelSpeech() {
         playToken++;
         speaking = false;
+        paused = false;
 
         synchronized (this) {
             if (windowsSpeechProcess != null && windowsSpeechProcess.isAlive()) {
                 windowsSpeechProcess.destroyForcibly();
+                try {
+                    windowsSpeechProcess.waitFor(1, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
             }
             windowsSpeechProcess = null;
         }
 
-        Platform.runLater(() -> {
-            try {
+        try {
+            if (Platform.isFxApplicationThread()) {
                 engine.executeScript("__tts_cancel();");
-            } catch (Exception ignored) {
+            } else {
+                runOnFxAndGet(() -> {
+                    engine.executeScript("__tts_cancel();");
+                    return null;
+                });
             }
-        });
+        } catch (Exception ignored) {
+        }
     }
 
     private boolean isWebSpeechAvailable() {
@@ -467,7 +563,7 @@ public class KeyboardTtsService {
         try {
             User user = UserContext.getInstance().getCurrentUser();
             if (user != null) {
-                db.updateModuleProgress(user.getId(), activeModuleId, target);
+                user.getDbConnector().updateModuleProgress(user.getId(), activeModuleId, target);
             }
         } catch (Exception ignored) {
         }

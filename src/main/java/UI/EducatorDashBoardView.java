@@ -1,12 +1,9 @@
 package UI;
 
 import UserFactory.Educator;
-import DatabaseController.dbConnector;
 import OtherComponents.LearningModule;
 import OtherComponents.Assessment;
 import OtherComponents.AssessmentForm;
-import OtherComponents.AssessmentSubmission;
-import Services.FetchProfileService;
 import javafx.geometry.*;
 import javafx.scene.*;
 import javafx.scene.control.*;
@@ -45,8 +42,8 @@ public class EducatorDashBoardView {
 
         int moduleCount = educator.getLearningModules() == null ? 0 : educator.getLearningModules().size();
         int assessmentCount = educator.getAssessmentResults() == null ? 0 : educator.getAssessmentResults().size();
-        int awaitingGradingCount = new dbConnector().getPendingAssessmentSubmissionsForEducator(educator.getId()).size();
-        int gradedCount = new dbConnector().getGradedAssessmentSubmissionsForEducator(educator.getId()).size();
+        int awaitingGradingCount = educator.getPendingAssessmentSubmissions().size();
+        int gradedCount = educator.getGradedAssessmentSubmissions().size();
 
         Button openQueueBtn = new Button("Open Grading Queue");
         openQueueBtn.setOnAction(e -> showGradingQueueDialog(educator, router));
@@ -67,7 +64,7 @@ public class EducatorDashBoardView {
     }
 
     private static void showGradingQueueDialog(Educator educator, SceneRouter router) {
-        List<AssessmentSubmission> pendingSubmissions = new dbConnector().getPendingAssessmentSubmissionsForEducator(educator.getId());
+        List<Assessment> pendingSubmissions = educator.getPendingAssessmentSubmissions();
 
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle("Assessments Awaiting Grading");
@@ -82,68 +79,113 @@ public class EducatorDashBoardView {
             empty.setStyle("-fx-text-fill: #8b949e;");
             listBox.getChildren().add(empty);
         } else {
-            for (AssessmentSubmission submission : pendingSubmissions) {
+            for (Assessment submission : pendingSubmissions) {
                 HBox row = new HBox(10);
                 row.setAlignment(Pos.CENTER_LEFT);
                 row.setPadding(new Insets(8));
                 row.setStyle("-fx-background-color: #161B22; -fx-border-color: #30363D; -fx-border-radius: 4;");
 
                 String moduleSubject = (submission.getModuleSubject() == null || submission.getModuleSubject().isBlank())
-                        ? "Module #" + submission.getModuleId() : submission.getModuleSubject();
+                        ? "Module #" + submission.getModuleID() : submission.getModuleSubject();
 
-                Label info = new Label(submission.getStudentName() + " | Assessment #" + submission.getAssessmentId() +
-                        " | Module #" + submission.getModuleId() + " (" + moduleSubject + ")" + " | " + submission.getLearningPath());
+                Label info = new Label("Student: " + submission.getStudentName() + " (ID #" + submission.getStudentId() + ")"
+                        + " | Module: " + moduleSubject
+                        + " | Assessment #" + submission.getAssessmentID());
                 info.setStyle("-fx-text-fill: #c9d1d9;");
+                info.setWrapText(true);
 
                 Region spacer = new Region();
                 HBox.setHgrow(spacer, Priority.ALWAYS);
 
-                Button viewBtn = new Button("Open Submission");
-                viewBtn.setOnAction(e -> {
-                    Alert a = new Alert(Alert.AlertType.INFORMATION);
-                    a.setTitle("Student Submission");
-                    a.setHeaderText(submission.getStudentName() + " - Assessment #" + submission.getAssessmentId());
-                    TextArea body = new TextArea();
-                    body.setWrapText(true);
-                    body.setEditable(false);
-                    body.setPrefRowCount(16);
-                    body.setText(submission.getSubmissionContent() == null || submission.getSubmissionContent().isBlank()
-                            ? "No submitted response was found for this assessment yet." : submission.getSubmissionContent());
-                    a.getDialogPane().setContent(body);
-                    a.showAndWait();
-                });
-
                 Button gradeBtn = new Button("Grade");
                 gradeBtn.setOnAction(e -> {
-                    TextInputDialog gd = new TextInputDialog();
-                    gd.setTitle("Grade Submission");
-                    gd.setHeaderText("Enter grade (0-100) for " + submission.getStudentName());
-                    gd.setContentText("Grade:");
-                    gd.showAndWait().ifPresent(value -> {
-                        try {
-                            int grade = Integer.parseInt(value.trim());
-                            if (grade < 0 || grade > 100) { UIComponents.showInfo("Grade must be between 0 and 100."); return; }
-                            boolean graded = new dbConnector().gradeAssessmentSubmission(educator.getId(), submission.getStudentId(), submission.getAssessmentId(), grade);
-                            if (graded) { UIComponents.showInfo("Submission graded successfully."); dialog.close(); router.goToDashboard(educator.getId(), "Educator"); }
-                            else UIComponents.showInfo("Failed to grade submission.");
-                        } catch (NumberFormatException ex) { UIComponents.showInfo("Please enter a valid numeric grade."); }
-                    });
+                    boolean graded = showSubmissionGradingDialog(submission, educator);
+                    if (graded) {
+                        UIComponents.showInfo("Submission graded successfully.");
+                        dialog.close();
+                        router.goToDashboard(educator.getId(), "Educator");
+                    }
                 });
 
-                row.getChildren().addAll(info, spacer, viewBtn, gradeBtn);
+                row.getChildren().addAll(info, spacer, gradeBtn);
                 listBox.getChildren().add(row);
             }
         }
 
         ScrollPane sp = new ScrollPane(listBox);
         sp.setFitToWidth(true);
-        sp.setPrefViewportHeight(450);
+        sp.setPrefViewportHeight(600);
         dialog.getDialogPane().setContent(sp);
+        dialog.getDialogPane().setMinWidth(1200);
+        dialog.getDialogPane().setMinHeight(600);
         dialog.showAndWait();
     }
 
+    private static boolean showSubmissionGradingDialog(Assessment submission, Educator educator) {
+        Dialog<ButtonType> gradeDialog = new Dialog<>();
+        gradeDialog.setTitle("Grade Submission");
+        gradeDialog.setHeaderText(submission.getStudentName() + " (ID #" + submission.getStudentId() + ") - Assessment #" + submission.getAssessmentID());
+
+        ButtonType saveType = new ButtonType("Save Grade", ButtonBar.ButtonData.OK_DONE);
+        gradeDialog.getDialogPane().getButtonTypes().addAll(saveType, ButtonType.CANCEL);
+
+        Node renderedAssessment = AssessmentFormRenderer.createSubmissionPreview(
+                submission.getContent(),
+                null
+        );
+        ScrollPane assessmentPane = new ScrollPane(renderedAssessment);
+        assessmentPane.setFitToWidth(true);
+        assessmentPane.setPrefViewportHeight(580);
+
+        TextField gradeField = new TextField();
+        gradeField.setPromptText("Enter grade between 0 and 100");
+        gradeField.setPrefWidth(220);
+
+        VBox assessmentBox = new VBox(8,
+                new Label("Submitted Assessment Form:"),
+                assessmentPane
+        );
+
+        HBox details = new HBox(12, assessmentBox);
+        HBox.setHgrow(assessmentBox, Priority.ALWAYS);
+        VBox.setVgrow(assessmentPane, Priority.ALWAYS);
+
+        HBox gradingRow = new HBox(10, new Label("Grade (0-100):"), gradeField);
+        gradingRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox form = new VBox(10, details, gradingRow);
+        form.setPadding(new Insets(10));
+        gradeDialog.getDialogPane().setContent(form);
+        gradeDialog.getDialogPane().setPrefWidth(1700);
+        gradeDialog.getDialogPane().setPrefHeight(820);
+
+        UIComponents.preparePopupForStudentTts(gradeDialog);
+
+        while (true) {
+            var result = gradeDialog.showAndWait();
+            if (result.isEmpty() || result.get() != saveType) {
+                return false;
+            }
+            try {
+                int grade = Integer.parseInt(gradeField.getText().trim());
+                if (grade < 0 || grade > 100) {
+                    UIComponents.showInfo("Grade must be between 0 and 100.");
+                    continue;
+                }
+                boolean graded = educator.gradeAssessmentSubmission(submission.getStudentId(), submission.getAssessmentID(), grade);
+                if (!graded) {
+                    UIComponents.showInfo("Failed to grade submission.");
+                    return false;
+                }
+                return true;
+            } catch (NumberFormatException ex) {
+                UIComponents.showInfo("Please enter a valid numeric grade.");
+            }
+        }
+    }
+
     private static void showGradedHistoryDialog(Educator educator) {
-        List<AssessmentSubmission> gradedSubmissions = new dbConnector().getGradedAssessmentSubmissionsForEducator(educator.getId());
+        List<Assessment> gradedSubmissions = educator.getGradedAssessmentSubmissions();
 
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.setTitle("Graded Assessment History");
@@ -158,17 +200,17 @@ public class EducatorDashBoardView {
             empty.setStyle("-fx-text-fill: #8b949e;");
             listBox.getChildren().add(empty);
         } else {
-            for (AssessmentSubmission submission : gradedSubmissions) {
+            for (Assessment submission : gradedSubmissions) {
                 HBox row = new HBox(10);
                 row.setAlignment(Pos.CENTER_LEFT);
                 row.setPadding(new Insets(8));
                 row.setStyle("-fx-background-color: #161B22; -fx-border-color: #30363D; -fx-border-radius: 4;");
 
                 String moduleSubject = (submission.getModuleSubject() == null || submission.getModuleSubject().isBlank())
-                        ? "Module #" + submission.getModuleId() : submission.getModuleSubject();
+                        ? "Module #" + submission.getModuleID() : submission.getModuleSubject();
 
-                Label info = new Label(submission.getStudentName() + " | Assessment #" + submission.getAssessmentId() +
-                        " | Module #" + submission.getModuleId() + " (" + moduleSubject + ")" + " | " + submission.getLearningPath() +
+                Label info = new Label(submission.getStudentName() + " | Assessment #" + submission.getAssessmentID() +
+                        " | Module #" + submission.getModuleID() + " (" + moduleSubject + ")" + " | " + submission.getLearningPath() +
                         " | Grade: " + submission.getGrade() + "%");
                 info.setStyle("-fx-text-fill: #c9d1d9;");
                 row.getChildren().add(info);
@@ -228,14 +270,14 @@ public class EducatorDashBoardView {
             cd.showAndWait().ifPresent(updatedContent -> {
                 if (updatedContent.trim().isEmpty()) { UIComponents.showInfo("Module content cannot be empty."); return; }
                 LearningModule updated = new LearningModule(module.getModuleID(), module.getProgress(), module.getEducatorID(), module.getLearningPath(), updatedContent.trim(), module.getSubject());
-                boolean ok = new dbConnector().updateModuleDB(updated);
+                boolean ok = educator.updateModule(updated);
                 UIComponents.showInfo(ok ? "Module updated." : "Module update failed.");
                 if (ok) router.goToDashboard(educator.getId(), "Educator");
             });
         });
 
         deleteBtn.setOnAction(e -> {
-            boolean deleted = new FetchProfileService().deleteModule(module.getModuleID());
+            boolean deleted = educator.deleteModule(module.getModuleID());
             UIComponents.showInfo(deleted ? "Module deleted." : "Module delete failed.");
             if (deleted) router.goToDashboard(educator.getId(), "Educator");
         });

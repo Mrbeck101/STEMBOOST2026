@@ -9,8 +9,12 @@ import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
 import javafx.application.Application;
+import javafx.application.Platform;
 
 public class RegisterView {
+
+    //private static final String INTRO_TTS = "Welcome To Stem Boost, a learning assistance app for the visually impaired to learn more about stem. To disable dictation at any time you can press the f1 key.";
+    private static final String REGISTER_PAGE_TTS = "You are currently on the register page. Complete the form fields to create your account.";
 
     public static Scene create(SceneRouter router) {
 
@@ -18,6 +22,7 @@ public class RegisterView {
 
         BorderPane root = new BorderPane();
         root.getStyleClass().add("root");
+        root.setFocusTraversable(true);
 
         // ================= CARD =================
         VBox card = new VBox(16);
@@ -96,8 +101,30 @@ public class RegisterView {
 
         // ================= LOGIC =================
         Runnable registerAction = () -> {
+            KeyboardTtsService tts = KeyboardTtsService.getInstance();
+            String validationError = validateRegistration(firstName, lastName, acctType, studentId, email, password, confirm);
+            if (validationError != null) {
+                error.setText(validationError);
+                tts.speakNow(validationError);
+                error.requestFocus();
+                return;
+            }
+
+            Integer associatedStudentId = null;
+            if ("Parent".equals(acctType.getValue())) {
+                try {
+                    associatedStudentId = Integer.parseInt(studentId.getText().trim());
+                } catch (NumberFormatException ex) {
+                    error.setText("Associated Student ID must be a valid number");
+                    tts.speakNow("Associated Student ID must be a valid number");
+                    error.requestFocus();
+                    return;
+                }
+            }
+
             if (!password.getText().equals(confirm.getText())) {
                 error.setText("Passwords do not match");
+                tts.speakNow("Passwords do not match");
                 error.requestFocus();
                 return;
             }
@@ -108,13 +135,17 @@ public class RegisterView {
                     firstName.getText(),
                     lastName.getText(),
                     acctType.getValue(),
-                    companyField.getText()
+                    companyField.getText(),
+                    associatedStudentId,
+                    null
             );
 
             if (success) {
-                router.goToLogin();
+                error.setText("Account Created");
+                tts.speakNow("Account Created", router::goToLogin);
             } else {
-                error.setText("Registration failed");
+                error.setText("Registration failed. Please review your information and try again.");
+                tts.speakNow(error.getText());
                 error.requestFocus();
             }
         };
@@ -158,9 +189,17 @@ public class RegisterView {
         password.setOnAction(e -> confirm.requestFocus());
         confirm.setOnAction(e -> registerAction.run());
 
-        acctType.setOnKeyPressed(e -> {
-            if (e.getCode() == KeyCode.ENTER && acctType.getValue() != null) {
-                email.requestFocus();
+        addFocusNarration(firstName, "You are currently in the First name Field");
+        addFocusNarration(lastName, "You are currently in the Last name Field");
+        addFocusNarration(acctType, "You are in the account type field, you can use up and down arrows to navigate");
+        addFocusNarration(email, "you are currently in the Email field");
+        addFocusNarration(password, "you are currently in the password field");
+        addFocusNarration(confirm, "you are currently in the confirm password field");
+        addFocusNarration(registerBtn, "Press enter to create your account");
+
+        acctType.valueProperty().addListener((obs, oldValue, newValue) -> {
+            if (acctType.isFocused() && newValue != null && !newValue.isBlank()) {
+                KeyboardTtsService.getInstance().speakNow(newValue);
             }
         });
 
@@ -191,6 +230,7 @@ public class RegisterView {
 
 
         Scene scene = new Scene(root, 1280, 800);
+        Platform.runLater(root::requestFocus);
 
         try {
             if (RegisterView.class.getResource("/register_styles.css") != null) {
@@ -208,11 +248,64 @@ public class RegisterView {
                 scene,
                 KeyboardTtsService.AccessMode.PUBLIC_TOGGLE,
                 () -> new KeyboardTtsService.ReadingContent(
-                        "Registration screen. Provide first name, last name, account type, email, and password fields. " +
-                        "Press F1 to toggle text to speech on or off."
+                        REGISTER_PAGE_TTS
                 )
+                //() -> KeyboardTtsService.getInstance().speakNow(INTRO_TTS, firstName::requestFocus)
         );
 
         return scene;
+    }
+
+    private static void addFocusNarration(Control control, String message) {
+        control.focusedProperty().addListener((obs, oldValue, focused) -> {
+            if (focused) {
+                KeyboardTtsService.getInstance().speakNow(message);
+            }
+        });
+    }
+
+    private static String validateRegistration(TextField firstName,
+                                               TextField lastName,
+                                               ComboBox<String> acctType,
+                                               TextField studentId,
+                                               TextField email,
+                                               PasswordField password,
+                                               PasswordField confirm) {
+        if (firstName.getText() == null || firstName.getText().trim().isEmpty()) {
+            return "First name is required";
+        }
+        if (lastName.getText() == null || lastName.getText().trim().isEmpty()) {
+            return "Last name is required";
+        }
+        if (acctType.getValue() == null || acctType.getValue().trim().isEmpty()) {
+            return "Please select an account type";
+        }
+        if ("Parent".equals(acctType.getValue())) {
+            String rawId = studentId.getText() == null ? "" : studentId.getText().trim();
+            if (rawId.isEmpty()) {
+                return "Associated Student ID is required for parent accounts";
+            }
+            try {
+                int id = Integer.parseInt(rawId);
+                if (id <= 0) {
+                    return "Associated Student ID must be a valid ID";
+                }
+            } catch (NumberFormatException ex) {
+                return "Associated Student ID must be a valid ID";
+            }
+        }
+        if (email.getText() == null || email.getText().trim().isEmpty()) {
+            return "Email is required";
+        }
+        if (password.getText() == null || password.getText().isEmpty()) {
+            return "Password is required";
+        }
+        if (confirm.getText() == null || confirm.getText().isEmpty()) {
+            return "Please confirm your password";
+        }
+        if (!password.getText().equals(confirm.getText())) {
+            return "Passwords do not match";
+        }
+        return null;
     }
 }

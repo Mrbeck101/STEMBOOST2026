@@ -1,11 +1,9 @@
 package UI;
 
 import UserFactory.Employer;
-import DatabaseController.dbConnector;
 import OtherComponents.Assessment;
 import OtherComponents.JobProgram;
 import OtherComponents.LearningModule;
-import Services.FetchProfileService;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -76,7 +74,7 @@ public class EmployerDashBoardView {
             jobTypeCombo.setMaxWidth(Double.MAX_VALUE);
             ComboBox<String> pathCombo = UIComponents.learningPathCombo();
 
-            dbConnector db = new dbConnector();
+            var db = employer.getDbConnector();
             ComboBox<String> moduleCombo = new ComboBox<>();
             moduleCombo.setMaxWidth(Double.MAX_VALUE);
             HashMap<String, Integer> moduleLabelToId = new HashMap<>();
@@ -159,7 +157,7 @@ public class EmployerDashBoardView {
                             descriptionArea.getText().trim(),
                             jobTypeCombo.getValue()
                     );
-                    boolean saved = new dbConnector().addJobProgram(job);
+                    boolean saved = employer.saveJobProgram(job);
                     UIComponents.showInfo(saved ? "Job program posted." : "Failed to post job program.");
                     if (saved) router.goToDashboard(employer.getId(), "Employer");
                 } catch (Exception ex) {
@@ -241,14 +239,14 @@ public class EmployerDashBoardView {
                 if (result != saveType) return;
                 job.setJobType(jobTypeCombo.getValue());
                 job.setDescription(descriptionArea.getText().trim());
-                boolean updated = new dbConnector().updateJobProgram(job);
+                boolean updated = employer.updateJobProgram(job);
                 UIComponents.showInfo(updated ? "Job program updated." : "Job update failed.");
                 if (updated) router.goToDashboard(employer.getId(), "Employer");
             });
         });
 
         deleteBtn.setOnAction(e -> {
-            boolean deleted = new FetchProfileService().deleteJobProgram(job.getJobID());
+            boolean deleted = employer.deleteJobProgram(job.getJobID());
             UIComponents.showInfo(deleted ? "Job program closed." : "Failed to close job program.");
             if (deleted) router.goToDashboard(employer.getId(), "Employer");
         });

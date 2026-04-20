@@ -12,8 +12,13 @@ import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
 import javafx.application.Application;
+import javafx.application.Platform;
 
 public class LoginView {
+
+    private static boolean launchWelcomeSpoken = false;
+    private static final String INTRO_TTS = "Welcome To Stem Boost, a learning assistance app for the visually impaired to learn more about stem. To disable dictation at any time you can press the f1 key.";
+    private static final String LOGIN_PAGE_TTS = "You are currently on the login page. If you do not have an account you can press the home button on your keyboard to register";
 
     public static Scene create(SceneRouter router) {
 
@@ -23,6 +28,7 @@ public class LoginView {
 
         StackPane root = new StackPane();
         root.getStyleClass().add("root");
+        root.setFocusTraversable(true);
 
         VBox card = new VBox(18);
         card.setAlignment(Pos.CENTER_LEFT);
@@ -66,6 +72,7 @@ public class LoginView {
 
         // Login logic
         Runnable loginAction = () -> {
+            KeyboardTtsService tts = KeyboardTtsService.getInstance();
             Pair<Integer, String> results = AuthService.login(
                     emailField.getText(),
                     passwordField.getText()
@@ -92,14 +99,17 @@ public class LoginView {
                         router.goToDashboard(results.getA(), results.getB());
                     } else {
                         error.setText("Failed to load user profile");
+                        tts.speakNow("Failed to load user profile");
                         error.requestFocus();
                     }
                 } catch (Exception e) {
                     error.setText("Error: " + e.getMessage());
+                    tts.speakNow("Error: " + e.getMessage());
                     error.requestFocus();
                 }
             } else {
                 error.setText("Invalid email or password");
+                tts.speakNow("Invalid email or password");
                 error.requestFocus(); // screen reader announces error
             }
         };
@@ -155,6 +165,18 @@ public class LoginView {
         root.getChildren().add(card);
 
         Scene scene = new Scene(root, 1280, 800);
+        Platform.runLater(root::requestFocus);
+
+        addFocusNarration(emailField, "You are currently in the email field");
+        addFocusNarration(passwordField, "You are currently in the password field");
+        addFocusNarration(loginBtn, "Press enter to log in");
+
+        scene.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.HOME) {
+                router.goToRegister();
+                e.consume();
+            }
+        });
 
         try {
             if (LoginView.class.getResource("/login_styles.css") != null) {
@@ -173,9 +195,14 @@ public class LoginView {
                 scene,
                 KeyboardTtsService.AccessMode.PUBLIC_TOGGLE,
                 () -> new KeyboardTtsService.ReadingContent(
-                        "Login screen. Enter your email and password, then activate the login button. " +
-                        "Press F1 to toggle text to speech on or off."
-                )
+                        LOGIN_PAGE_TTS
+                ),
+                () -> {
+                    if (!launchWelcomeSpoken) {
+                        launchWelcomeSpoken = true;
+                        KeyboardTtsService.getInstance().speakNow(INTRO_TTS + " " + LOGIN_PAGE_TTS);
+                    }
+                }
         );
 
         return scene;
@@ -201,5 +228,13 @@ public class LoginView {
             e.printStackTrace();
             return null;
         }
+    }
+
+    private static void addFocusNarration(Control control, String message) {
+        control.focusedProperty().addListener((obs, oldValue, focused) -> {
+            if (focused) {
+                KeyboardTtsService.getInstance().speakNow(message);
+            }
+        });
     }
 }

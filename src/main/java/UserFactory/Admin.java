@@ -36,6 +36,11 @@ public class Admin extends User {
         return DB.listAllUsersSummary();
     }
 
+    @Override
+    public List<HashMap<String, Object>> getAvailableContacts() {
+        return getAllUsers();
+    }
+
     public List<HashMap<String, Object>> getAllModules() {
         return DB.listAllModulesSummary();
     }

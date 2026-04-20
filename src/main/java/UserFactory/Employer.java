@@ -44,6 +44,34 @@ public class Employer extends User {
         this.jobPrograms.add(program);
     }
 
+    public boolean saveJobProgram(JobProgram program) {
+        boolean saved = DB.addJobProgram(program);
+        if (saved) {
+            this.jobPrograms = DB.searchJobProgramsDB(super.getId());
+        }
+        return saved;
+    }
+
+    public boolean updateJobProgram(JobProgram program) {
+        boolean updated = DB.updateJobProgram(program);
+        if (updated) {
+            this.jobPrograms = DB.searchJobProgramsDB(super.getId());
+        }
+        return updated;
+    }
+
+    public boolean deleteJobProgram(int jobId) {
+        boolean deleted = DB.deleteJobProgramById(jobId);
+        if (deleted) {
+            this.jobPrograms = DB.searchJobProgramsDB(super.getId());
+        }
+        return deleted;
+    }
+
+    public List<Assessment> getAssessmentsForModule(int moduleId) {
+        return DB.searchAssessmentDB(moduleId, "Educator");
+    }
+
     public String getCompany() {
         return this.company;
     }

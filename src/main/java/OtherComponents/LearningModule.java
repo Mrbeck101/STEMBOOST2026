@@ -10,11 +10,13 @@ public class LearningModule {
 
     public LearningModule(int moduleID, int progress, int educatorID, String learningPath, String content, String subject) {
         this.moduleID = moduleID;
-        this.progress = progress;
-        this.educatorID = educatorID;
-        this.learningPath = learningPath;
-        this.content = content;
-        this.subject = subject;
+        this.progress = Math.max(0, Math.min(100, progress));
+        this.educatorID = educatorID <= 0 ? 1 : educatorID;
+        String safePath = learningPath == null ? "" : learningPath.trim();
+        this.learningPath = safePath.isEmpty() ? "Unknown" : safePath;
+        this.content = content == null ? "" : content;
+        String safeSubject = subject == null ? "" : subject.trim();
+        this.subject = safeSubject.isEmpty() ? "Untitled Module" : safeSubject;
     }
 
     public int getModuleID() {
@@ -30,7 +32,7 @@ public class LearningModule {
     }
 
     public void setProgress(int progress) {
-        this.progress = progress;
+        this.progress = Math.max(0, Math.min(100, progress));
     }
 
     public int getEducatorID() {
@@ -46,7 +48,7 @@ public class LearningModule {
     }
 
     public void setContent(String content) {
-        this.content = content;
+        this.content = content == null ? "" : content;
     }
 
     public String getSubject() {
@@ -54,6 +56,7 @@ public class LearningModule {
     }
 
     public void setSubject(String subject) {
-        this.subject = subject;
+        String safeSubject = subject == null ? "" : subject.trim();
+        this.subject = safeSubject.isEmpty() ? "Untitled Module" : safeSubject;
     }
 }

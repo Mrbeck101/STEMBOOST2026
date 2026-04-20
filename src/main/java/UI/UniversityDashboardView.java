@@ -1,6 +1,5 @@
 package UI;
 
-import Services.FetchProfileService;
 import UserFactory.University;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
@@ -63,10 +62,8 @@ public class UniversityDashboardView {
             ScrollPane scrollPane = UIComponents.darkScrollPane();
             VBox studentsVBox = new VBox(10);
             studentsVBox.setPadding(new Insets(10));
-            FetchProfileService service = new FetchProfileService();
-
             for (Integer studentId : studentIds) {
-                HashMap<String, Object> summary = service.getAccountSummary(studentId);
+                HashMap<String, Object> summary = university.getAccountSummary(studentId);
                 String studentName = summary != null && summary.get("name") != null
                         ? (String) summary.get("name")
                         : "Student #" + studentId;
@@ -101,12 +98,11 @@ public class UniversityDashboardView {
     }
 
     private static VBox createReportCardsContent(University university, SceneRouter router) {
-        FetchProfileService service = new FetchProfileService();
         return StudentReportCardView.createReportTab(
                 "University Report Cards",
                 "Generate a progress report for every student enrolled under " + university.getUniversityName() + ". Each report summarizes learning path, enrolled modules, module progress, and assessment progress.",
                 "No student report cards are available for this university yet.",
-                () -> service.getUniversityReportCards(university.getId()),
+                university::getStudentReportCards,
                 router
         );
     }

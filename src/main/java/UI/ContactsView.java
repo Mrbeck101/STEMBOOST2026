@@ -1,7 +1,6 @@
 package UI;
 
 import UserFactory.*;
-import Services.FetchProfileService;
 import atlantafx.base.theme.PrimerDark;
 import javafx.geometry.*;
 import javafx.scene.*;
@@ -87,11 +86,7 @@ public class ContactsView {
 
     private static List<HashMap<String, Object>> getUserContacts(User user) {
         try {
-            FetchProfileService profileService = new FetchProfileService();
-            if ("Admin".equals(user.getAcctType())) {
-                return profileService.listUsers();
-            }
-            return profileService.getContactsByRole(user.getId(), user.getAcctType());
+            return user.getAvailableContacts();
         } catch (Exception e) {
             System.err.println("Error retrieving contacts: " + e.getMessage());
             return null;
@@ -132,10 +127,6 @@ public class ContactsView {
 
 
     private static void showAlert(String title, String message) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
+        UIComponents.showAlert(title, message);
     }
 }

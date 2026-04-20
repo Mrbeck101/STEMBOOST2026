@@ -66,4 +66,24 @@ public class Educator extends User {
         DB.addModuleDB(mod);
         this.modules.add(mod);
     }
+
+    public boolean updateModule(LearningModule module) {
+        return DB.updateModuleDB(module);
+    }
+
+    public boolean deleteModule(int moduleId) {
+        return DB.deleteModuleById(moduleId);
+    }
+
+    public List<Assessment> getPendingAssessmentSubmissions() {
+        return DB.getPendingAssessmentSubmissionsForEducator(super.getId());
+    }
+
+    public List<Assessment> getGradedAssessmentSubmissions() {
+        return DB.getGradedAssessmentSubmissionsForEducator(super.getId());
+    }
+
+    public boolean gradeAssessmentSubmission(int studentId, int assessmentId, int grade) {
+        return DB.gradeAssessmentSubmission(super.getId(), studentId, assessmentId, grade);
+    }
 }

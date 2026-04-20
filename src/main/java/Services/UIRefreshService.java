@@ -17,7 +17,7 @@ import java.util.concurrent.*;
 public class UIRefreshService {
     private static UIRefreshService instance;
     private ScheduledExecutorService scheduler;
-    private final dbConnector db;
+    private dbConnector db;
     private final Set<UIRefreshListener> listeners;
     private User currentUser;
     private int lastMessageCount = 0;
@@ -26,7 +26,6 @@ public class UIRefreshService {
     private boolean isPolling = false;
 
     private UIRefreshService() {
-        this.db = new dbConnector();
         this.listeners = Collections.synchronizedSet(new HashSet<>());
     }
 
@@ -46,6 +45,7 @@ public class UIRefreshService {
         if (isPolling) return; // Already polling
 
         this.currentUser = user;
+        this.db = user == null ? null : user.getDbConnector();
         this.lastMessageCount = 0;
         this.assessmentStatusCache.clear();
         this.moduleStateCache.clear();
@@ -94,6 +94,7 @@ public class UIRefreshService {
         if (!isPolling) return;
 
         this.currentUser = null;
+        this.db = null;
         this.lastMessageCount = 0;
         this.assessmentStatusCache.clear();
         this.moduleStateCache.clear();

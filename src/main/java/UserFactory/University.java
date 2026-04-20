@@ -1,6 +1,7 @@
 package UserFactory;
 
 import OtherComponents.Assessment;
+import OtherComponents.StudentReportCard;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.util.HashMap;
@@ -42,6 +43,10 @@ public class University extends User {
 
     public List<Integer> getEnrolledStudents() {
         return this.enrolledStudents;
+    }
+
+    public List<StudentReportCard> getStudentReportCards() {
+        return buildStudentReportCards(this.enrolledStudents);
     }
 
 
