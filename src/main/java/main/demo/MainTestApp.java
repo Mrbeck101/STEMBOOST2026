@@ -9,7 +9,7 @@ public class MainTestApp {
     public static void messageTest() {
 
         dbConnector DB = new dbConnector();
-        Message msg = new Message(2, 1, "RE:Blind Tools", "I'm a student I don't know why your asking me");
+        Message msg = new Message(2, 1, "I'm a student I don't know why your asking me");
         msg.setConvoID(1);
 
         InboxHandler iH = new InboxHandler(2, DB);

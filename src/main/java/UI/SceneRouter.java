@@ -1,5 +1,7 @@
 package UI;
 
+import OtherComponents.Assessment;
+import Services.UIRefreshService;
 import javafx.stage.Stage;
 
 public class SceneRouter {
@@ -11,6 +13,7 @@ public class SceneRouter {
     }
 
     public void goToLogin() {
+        UIRefreshService.getInstance().stopPolling();
         UserContext.getInstance().logout();
         stage.setScene(LoginView.create(this));
     }
@@ -34,6 +37,15 @@ public class SceneRouter {
         }
     }
 
+    public void goToCurrentUserDashboard() {
+        var currentUser = UserContext.getInstance().getCurrentUser();
+        if (currentUser == null) {
+            goToLogin();
+            return;
+        }
+        goToDashboard(currentUser.getId(), currentUser.getAcctType());
+    }
+
     public void goToModules() {
         stage.setScene(ModuleView.create(this));
     }
@@ -43,7 +55,17 @@ public class SceneRouter {
     }
 
     public void goToInbox() {
-        stage.setScene(InboxView.create(this));
+        stage.setScene(InboxView.create(this, -1));
+    }
+
+    public void goToInboxWithContact(int contactId) {
+        stage.setTitle("STEMBOOST - Inbox");
+        stage.setScene(InboxView.create(this, contactId));
+    }
+
+    public void goToTakeAssessment(Assessment assessment) {
+        stage.setTitle("STEMBOOST - Take Assessment");
+        stage.setScene(TakeAssessmentView.create(this, assessment));
     }
 
     public void goToLearningPathSelection() {
@@ -59,5 +81,10 @@ public class SceneRouter {
     public void goToProfile() {
         stage.setTitle("STEMBOOST - Profile");
         stage.setScene(ProfileView.create(this));
+    }
+
+    public void goToStudentProfile(int studentId) {
+        stage.setTitle("STEMBOOST - Student Profile");
+        stage.setScene(ProfileView.createReadOnly(this, studentId));
     }
 }

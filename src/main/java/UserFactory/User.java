@@ -30,8 +30,8 @@ public abstract class User {
     protected abstract void initializeUser();
 
 
-    public boolean sendMessage(int receiverID, String subject, String content) throws Exception {
-        Message msg = new Message(id, receiverID, subject, content);
+    public boolean sendMessage(int receiverID, String content) throws Exception {
+        Message msg = new Message(id, receiverID, content);
         return inboxHandler.sendMessage(msg);
     }
     //TODO: Add delMessage method

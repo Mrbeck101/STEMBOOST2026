@@ -10,6 +10,7 @@ public class UserContext {
 
     private static UserContext instance;
     private User currentUser;
+    private Integer selectedModuleId;
 
     private UserContext() {
     }
@@ -33,8 +34,21 @@ public class UserContext {
         return currentUser != null;
     }
 
+    public Integer getSelectedModuleId() {
+        return selectedModuleId;
+    }
+
+    public void setSelectedModuleId(Integer selectedModuleId) {
+        this.selectedModuleId = selectedModuleId;
+    }
+
+    public void clearSelectedModuleId() {
+        this.selectedModuleId = null;
+    }
+
     public void logout() {
         this.currentUser = null;
+        this.selectedModuleId = null;
     }
 
     public String getUserType() {

@@ -39,16 +39,11 @@ public class University extends User {
         return this.universityName;
     }
 
-    public void setUniversityName(String universityName) {
-        this.universityName = universityName;
-    }
 
     public List<Integer> getEnrolledStudents() {
         return this.enrolledStudents;
     }
 
-    public void addEnrolledStudent(int studentID) {
-        this.enrolledStudents.add(studentID);
-    }
+
 
 }

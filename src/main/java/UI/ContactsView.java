@@ -1,7 +1,6 @@
 package UI;
 
 import UserFactory.*;
-import DatabaseController.dbConnector;
 import Services.FetchProfileService;
 import atlantafx.base.theme.PrimerDark;
 import javafx.geometry.*;
@@ -121,8 +120,8 @@ public class ContactsView {
         messageBtn.setAccessibleText("Send message to " + contact.get("name"));
 
         messageBtn.setOnAction(e -> {
-            // Open compose message dialog with this contact pre-selected
-            showComposeMessageDialog(router, currentUser, contact);
+            int contactId = (Integer) contact.get("user_id");
+            router.goToInboxWithContact(contactId);
         });
 
         buttonBox.getChildren().add(messageBtn);
@@ -131,74 +130,6 @@ public class ContactsView {
         return card;
     }
 
-    private static void showComposeMessageDialog(SceneRouter router, User sender, HashMap<String, Object> recipient) {
-        Dialog<ButtonType> dialog = new Dialog<>();
-        dialog.setTitle("Send Message");
-        dialog.setHeaderText("Compose message to " + recipient.get("name"));
-
-        // Create the content
-        VBox content = new VBox(15);
-        content.setPadding(new Insets(20));
-        content.setPrefWidth(500);
-
-        Label recipientLabel = new Label("To: " + recipient.get("name"));
-        recipientLabel.setStyle("-fx-font-weight: bold;");
-
-        TextField subjectField = new TextField();
-        subjectField.setPromptText("Subject");
-        subjectField.setMaxWidth(Double.MAX_VALUE);
-
-        TextArea messageArea = new TextArea();
-        messageArea.setPromptText("Type your message here...");
-        messageArea.setWrapText(true);
-        messageArea.setPrefRowCount(8);
-        messageArea.setMaxWidth(Double.MAX_VALUE);
-
-        content.getChildren().addAll(recipientLabel, new Label("Subject:"), subjectField, new Label("Message:"), messageArea);
-
-        DialogPane dialogPane = dialog.getDialogPane();
-        dialogPane.setContent(content);
-
-        ButtonType sendButtonType = new ButtonType("Send", ButtonBar.ButtonData.OK_DONE);
-        ButtonType cancelButtonType = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
-
-        dialogPane.getButtonTypes().addAll(sendButtonType, cancelButtonType);
-
-        // Handle send button
-        dialog.setResultConverter(dialogButton -> {
-            if (dialogButton == sendButtonType) {
-                String subject = subjectField.getText().trim();
-                String message = messageArea.getText().trim();
-
-                if (!subject.isEmpty() && !message.isEmpty()) {
-                    try {
-                        // Create and send message
-                        OtherComponents.Message msg = new OtherComponents.Message(
-                            sender.getId(),
-                            (Integer) recipient.get("user_id"),
-                            subject,
-                            message
-                        );
-
-                        dbConnector db = new dbConnector();
-                        if (db.addMessage(msg)) {
-                            showAlert("Success", "Message sent successfully!");
-                        } else {
-                            showAlert("Error", "Failed to send message. Please try again.");
-                        }
-                    } catch (Exception e) {
-                        showAlert("Error", "Database error: " + e.getMessage());
-                        e.printStackTrace();
-                    }
-                } else {
-                    showAlert("Error", "Please fill in both subject and message");
-                }
-            }
-            return null;
-        });
-
-        dialog.showAndWait();
-    }
 
     private static void showAlert(String title, String message) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);

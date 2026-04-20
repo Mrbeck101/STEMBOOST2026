@@ -3,13 +3,16 @@ package UI;
 import UserFactory.*;
 import OtherComponents.LearningModule;
 import Services.FetchProfileService;
+import Services.UIRefreshService;
 import DatabaseController.dbConnector;
 import atlantafx.base.theme.PrimerDark;
+import javafx.beans.value.ChangeListener;
 import javafx.geometry.*;
 import javafx.scene.*;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.application.Application;
+import javafx.stage.Stage;
 
 /**
  * Module View - Display and manage learning modules
@@ -35,17 +38,7 @@ public class ModuleView {
 
         Button backBtn = new Button("← Back");
         backBtn.setStyle("-fx-font-size: 12;");
-        backBtn.setOnAction(e -> {
-            String userType = currentUser.getAcctType();
-            switch (userType) {
-                case "Student" -> router.goToDashboard(currentUser.getId(), "Student");
-                case "Educator" -> router.goToDashboard(currentUser.getId(), "Educator");
-                case "Counselor" -> router.goToDashboard(currentUser.getId(), "Counselor");
-                case "Employer" -> router.goToDashboard(currentUser.getId(), "Employer");
-                case "Admin" -> router.goToDashboard(currentUser.getId(), "Admin");
-                default -> router.goToLogin();
-            }
-        });
+        backBtn.setOnAction(e -> router.goToCurrentUserDashboard());
 
         Label title = new Label("Learning Modules");
         title.setStyle("-fx-font-size: 20; -fx-font-weight: bold; -fx-text-fill: #ffffff;");
@@ -64,21 +57,20 @@ public class ModuleView {
         FetchProfileService profileService = new FetchProfileService();
 
         // Student keeps enrolled-only behavior; staff roles can browse all and filter by path.
-        java.util.List<LearningModule> modules;
+        Integer selectedModuleId = UserContext.getInstance().getSelectedModuleId();
         ComboBox<String> filterCombo = new ComboBox<>();
         filterCombo.getItems().addAll("All", "Electrical Engineering", "Software Engineering", "Information Technology", "Cybersecurity", "Computer Engineering", "Artificial Intelligence");
         filterCombo.setValue("All");
 
         VBox filterRow = new VBox(8);
         if (currentUser instanceof Student) {
-            modules = ((Student) currentUser).getLearningModules();
+            if (selectedModuleId != null) {
+                UserContext.getInstance().clearSelectedModuleId();
+            }
         } else if (currentUser instanceof Educator || currentUser instanceof Counselor || currentUser instanceof Employer || currentUser instanceof Admin) {
-            modules = profileService.browseModules("All");
             Label filterLabel = new Label("Filter by Learning Path");
             filterLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #8b949e;");
             filterRow.getChildren().addAll(filterLabel, filterCombo);
-        } else {
-            modules = java.util.List.of();
         }
 
         ScrollPane scrollPane = new ScrollPane();
@@ -88,33 +80,38 @@ public class ModuleView {
         VBox modulesVBox = new VBox(15);
         modulesVBox.setPadding(new Insets(10));
 
-        if (!modules.isEmpty()) {
-            for (LearningModule module : modules) {
-                VBox moduleCard = createModuleDetailCard(module, currentUser instanceof Student);
-                modulesVBox.getChildren().add(moduleCard);
+        Runnable refreshModules = () -> {
+            modulesVBox.getChildren().clear();
+            java.util.List<LearningModule> modules;
+
+            if (currentUser instanceof Student) {
+                modules = new dbConnector().searchModulesDB(currentUser.getId(), "Student");
+                if (selectedModuleId != null) {
+                    modules = modules.stream().filter(m -> m.getModuleID() == selectedModuleId).toList();
+                }
+            } else if (currentUser instanceof Educator || currentUser instanceof Counselor || currentUser instanceof Employer || currentUser instanceof Admin) {
+                modules = profileService.browseModules(filterCombo.getValue());
+            } else {
+                modules = java.util.List.of();
             }
-        } else {
-            Label noModules = new Label("No modules available");
-            noModules.setStyle("-fx-font-size: 14; -fx-text-fill: #aaaaaa;");
-            modulesVBox.getChildren().add(noModules);
-        }
+
+            if (!modules.isEmpty()) {
+                for (LearningModule module : modules) {
+                    VBox moduleCard = createModuleDetailCard(module, currentUser instanceof Student);
+                    modulesVBox.getChildren().add(moduleCard);
+                }
+            } else {
+                Label noModules = new Label("No modules available");
+                noModules.setStyle("-fx-font-size: 14; -fx-text-fill: #aaaaaa;");
+                modulesVBox.getChildren().add(noModules);
+            }
+        };
+
+        refreshModules.run();
 
         scrollPane.setContent(modulesVBox);
         if (!filterRow.getChildren().isEmpty()) {
-            filterCombo.setOnAction(e -> {
-                modulesVBox.getChildren().clear();
-                String selectedPath = filterCombo.getValue();
-                java.util.List<LearningModule> filtered = profileService.browseModules(selectedPath);
-                if (filtered.isEmpty()) {
-                    Label noModules = new Label("No modules found for selected filter");
-                    noModules.setStyle("-fx-font-size: 14; -fx-text-fill: #aaaaaa;");
-                    modulesVBox.getChildren().add(noModules);
-                    return;
-                }
-                for (LearningModule module : filtered) {
-                    modulesVBox.getChildren().add(createModuleDetailCard(module, false));
-                }
-            });
+            filterCombo.setOnAction(e -> refreshModules.run());
             content.getChildren().addAll(contentTitle, filterRow, scrollPane);
         } else {
             content.getChildren().addAll(contentTitle, scrollPane);
@@ -124,6 +121,29 @@ public class ModuleView {
         root.setCenter(content);
 
         Scene scene = new Scene(root, 1400, 900);
+
+        UIRefreshService.UIRefreshListener modulesListener = (updateType, data) -> {
+            if ("MODULES_UPDATED".equals(updateType)) {
+                refreshModules.run();
+            }
+        };
+        UIRefreshService.getInstance().addListener(modulesListener);
+
+        scene.windowProperty().addListener((obs, oldWindow, newWindow) -> {
+            if (newWindow instanceof Stage stage) {
+                ChangeListener<Scene> sceneChangeListener = new ChangeListener<>() {
+                    @Override
+                    public void changed(javafx.beans.value.ObservableValue<? extends Scene> observable, Scene previous, Scene current) {
+                        if (current != scene) {
+                            UIRefreshService.getInstance().removeListener(modulesListener);
+                            stage.sceneProperty().removeListener(this);
+                        }
+                    }
+                };
+                stage.sceneProperty().addListener(sceneChangeListener);
+            }
+        });
+
         return scene;
     }
 

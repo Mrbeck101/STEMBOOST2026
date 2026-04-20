@@ -4,14 +4,14 @@ import UserFactory.Student;
 import DatabaseController.dbConnector;
 import OtherComponents.LearningModule;
 import OtherComponents.Assessment;
-import atlantafx.base.theme.PrimerDark;
+import Services.UIRefreshService;
 import javafx.geometry.*;
 import javafx.scene.*;
 import javafx.scene.AccessibleRole;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import javafx.application.Application;
-import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.stage.Stage;
+import javafx.beans.value.ChangeListener;
 import java.util.List;
 
 /**
@@ -20,142 +20,100 @@ import java.util.List;
 public class StudentDashBoardView {
 
     public static Scene create(SceneRouter router) {
-        Application.setUserAgentStylesheet(new PrimerDark().getUserAgentStylesheet());
+        Student student = (Student) UIComponents.guardLogin(router);
+        if (student == null) return LoginView.create(router);
 
-        Student student = (Student) UserContext.getInstance().getCurrentUser();
-        if (student == null) {
-            return LoginView.create(router);
-        }
+        UIRefreshService.getInstance().startPolling(student);
 
-        BorderPane root = new BorderPane();
-        root.getStyleClass().add("root");
-
-        // ================= TOP BAR =================
-        HBox topBar = createTopBar(student, router);
-        root.setTop(topBar);
-
-        // ================= MAIN CONTENT =================
         TabPane tabPane = new TabPane();
         tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
-        // Dashboard Tab
-        Tab dashboardTab = new Tab("Dashboard", createDashboardContent(student));
-        dashboardTab.setStyle("-fx-text-base-color: #ffffff;");
-
-        // Modules Tab
         Tab modulesTab = new Tab("Learning Modules", createModulesContent(student, router));
-        modulesTab.setStyle("-fx-text-base-color: #ffffff;");
 
-        // Assessments Tab
-        Tab assessmentsTab = new Tab("Assessments", createAssessmentsContent(student));
-        assessmentsTab.setStyle("-fx-text-base-color: #ffffff;");
+        tabPane.getTabs().addAll(
+                new Tab("Dashboard", createDashboardContent(student)),
+                modulesTab,
+                new Tab("Assessments", createAssessmentsContent(student, router)),
+                new Tab("Inbox", UIComponents.inboxTab(student, router))
+        );
 
-        // Inbox Tab
-        Tab inboxTab = new Tab("Inbox", createInboxContent(student, router));
-        inboxTab.setStyle("-fx-text-base-color: #ffffff;");
+        // Student top bar includes university subtitle
+        HBox topBar = UIComponents.topBarWithSubtitle(
+                "STEMBOOST - Student Dashboard", student.getName(), "University: " + student.getUniversity(), router);
 
-        tabPane.getTabs().addAll(dashboardTab, modulesTab, assessmentsTab, inboxTab);
+        Scene scene = UIComponents.buildScene(topBar, tabPane);
 
-        root.setCenter(tabPane);
+        UIRefreshService.UIRefreshListener modulesListener = (updateType, data) -> {
+            if ("MODULES_UPDATED".equals(updateType)) {
+                modulesTab.setContent(createModulesContent(student, router));
+            }
+        };
+        UIRefreshService.getInstance().addListener(modulesListener);
 
-        Scene scene = new Scene(root, 1400, 900);
+        scene.windowProperty().addListener((obs, oldWindow, newWindow) -> {
+            if (newWindow instanceof Stage stage) {
+                ChangeListener<Scene> sceneChangeListener = new ChangeListener<>() {
+                    @Override
+                    public void changed(javafx.beans.value.ObservableValue<? extends Scene> observable, Scene previous, Scene current) {
+                        if (current != scene) {
+                            UIRefreshService.getInstance().removeListener(modulesListener);
+                            stage.sceneProperty().removeListener(this);
+                        }
+                    }
+                };
+                stage.sceneProperty().addListener(sceneChangeListener);
+            }
+        });
+
         return scene;
     }
 
-    private static HBox createTopBar(Student student, SceneRouter router) {
-        HBox topBar = new HBox(20);
-        topBar.setPadding(new Insets(15, 20, 15, 20));
-        topBar.setStyle("-fx-background-color: #1C2128;");
-        topBar.setAlignment(Pos.CENTER_LEFT);
-
-        Label appTitle = new Label("STEMBOOST - Student Dashboard");
-        appTitle.setStyle("-fx-font-size: 20; -fx-font-weight: bold; -fx-text-fill: #ffffff;");
-        appTitle.setAccessibleText("Stemboost Student Dashboard");
-
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
-        // Student Info
-        VBox studentInfo = new VBox(5);
-        Label nameLabel = new Label("Welcome, " + student.getName());
-        nameLabel.setStyle("-fx-font-size: 14; -fx-text-fill: #ffffff;");
-        nameLabel.setAccessibleText("Welcome, " + student.getName());
-
-        Label uniLabel = new Label("University: " + student.getUniversity());
-        uniLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #aaaaaa;");
-        uniLabel.setAccessibleText("University: " + student.getUniversity());
-
-        studentInfo.getChildren().addAll(nameLabel, uniLabel);
-
-        // Logout Button
-        Button logoutBtn = new Button("Logout");
-        logoutBtn.setStyle("-fx-font-size: 12;");
-        logoutBtn.setAccessibleText("Logout button");
-        logoutBtn.setOnAction(e -> router.goToLogin());
-
-        topBar.getChildren().addAll(appTitle, spacer, studentInfo, logoutBtn);
-        return topBar;
-    }
-
     private static VBox createDashboardContent(Student student) {
-        VBox content = new VBox(20);
-        content.setPadding(new Insets(20));
-        content.setStyle("-fx-background-color: #0D1117;");
+        VBox content = UIComponents.contentBox(20);
 
-        // Welcome Card
         VBox welcomeCard = new VBox(15);
         welcomeCard.setPadding(new Insets(20));
-        welcomeCard.setStyle("-fx-background-color: #161B22; -fx-border-radius: 8; -fx-padding: 20;");
+        welcomeCard.setStyle("-fx-background-color: #161B22; -fx-border-radius: 8;");
         welcomeCard.setAccessibleText("Welcome section containing your learning path and progress overview");
 
         Label welcomeTitle = new Label("Your Learning Journey");
         welcomeTitle.setStyle("-fx-font-size: 18; -fx-font-weight: bold; -fx-text-fill: #ffffff;");
-        welcomeTitle.setAccessibleText("Your Learning Journey");
 
         Label learningPathLabel = new Label("Learning Path: " + student.getLearningPath());
         learningPathLabel.setStyle("-fx-font-size: 14; -fx-text-fill: #c9d1d9;");
-        learningPathLabel.setAccessibleText("Learning Path: " + student.getLearningPath());
-
         Label progressLabel = new Label("Overall Progress: In Progress");
         progressLabel.setStyle("-fx-font-size: 14; -fx-text-fill: #c9d1d9;");
-        progressLabel.setAccessibleText("Overall Progress: In Progress");
 
         welcomeCard.getChildren().addAll(welcomeTitle, learningPathLabel, progressLabel);
 
-        // Quick Stats
-        HBox statsBox = new HBox(15);
-        statsBox.setAccessibleRole(AccessibleRole.NODE);
+        List<LearningModule> modules = new dbConnector().searchModulesDB(student.getId(), "Student");
+        int activeModules = modules == null ? 0 : modules.size();
+        List<Assessment> assessments = student.getAssessmentResults();
+        int pendingAssessments = assessments == null ? 0 : (int) assessments.stream().filter(a -> !a.isCompleted()).count();
+        double averageGrade = assessments == null ? 0.0 : assessments.stream()
+                .filter(a -> a.getGrade() >= 0).mapToInt(Assessment::getGrade).average().orElse(0.0);
+
+        HBox statsBox = UIComponents.statsRow(
+                UIComponents.statCard("Active Modules", String.valueOf(activeModules)),
+                UIComponents.statCard("Pending Assessments", String.valueOf(pendingAssessments)),
+                UIComponents.statCard("Average Assessment", String.format("%.1f%%", averageGrade))
+        );
         statsBox.setAccessibleText("Quick statistics section");
-
-        VBox modulesStatsCard = createStatCard("Active Modules", "0", "Modules you are currently enrolled in");
-        VBox assessmentsStatsCard = createStatCard("Pending Assessments", "0", "Assessments awaiting completion");
-        VBox completionCard = createStatCard("Completion Rate", "0%", "Overall course completion percentage");
-
-        statsBox.getChildren().addAll(modulesStatsCard, assessmentsStatsCard, completionCard);
-        HBox.setHgrow(modulesStatsCard, Priority.ALWAYS);
-        HBox.setHgrow(assessmentsStatsCard, Priority.ALWAYS);
-        HBox.setHgrow(completionCard, Priority.ALWAYS);
 
         content.getChildren().addAll(welcomeCard, statsBox);
         return content;
     }
 
     private static VBox createModulesContent(Student student, SceneRouter router) {
-        VBox content = new VBox(15);
-        content.setPadding(new Insets(20));
-        content.setStyle("-fx-background-color: #0D1117;");
+        VBox content = UIComponents.contentBox(15);
 
-        Label title = new Label("Learning Modules");
-        title.setStyle("-fx-font-size: 18; -fx-font-weight: bold; -fx-text-fill: #ffffff;");
+        Label title = UIComponents.sectionTitle("Learning Modules");
         title.setAccessibleText("Learning Modules section");
 
         Button requestModuleBtn = new Button("Request New Learning Module");
         requestModuleBtn.setOnAction(e -> showModuleRequestDialog(student));
-
         Button requestJobBtn = new Button("Request Job Program");
         requestJobBtn.setOnAction(e -> showJobRequestDialog(student));
-
-        HBox requestButtons = new HBox(10, requestModuleBtn, requestJobBtn);
 
         List<LearningModule> modules = student.getLearningModules();
 
@@ -163,29 +121,22 @@ public class StudentDashBoardView {
             Label noModules = new Label("No modules enrolled yet");
             noModules.setStyle("-fx-font-size: 14; -fx-text-fill: #aaaaaa;");
             noModules.setAccessibleText("You have no modules enrolled yet");
-            content.getChildren().addAll(title, requestButtons, noModules);
+            content.getChildren().addAll(title, new HBox(10, requestModuleBtn, requestJobBtn), noModules);
         } else {
-            ScrollPane scrollPane = new ScrollPane();
-            scrollPane.setFitToWidth(true);
-            scrollPane.setStyle("-fx-background-color: #0D1117; -fx-control-inner-background: #0D1117;");
-
+            ScrollPane scrollPane = UIComponents.darkScrollPane();
             VBox modulesVBox = new VBox(10);
             modulesVBox.setPadding(new Insets(10));
-
             for (LearningModule module : modules) {
-                VBox moduleCard = createModuleCard(module);
-                modulesVBox.getChildren().add(moduleCard);
+                modulesVBox.getChildren().add(createModuleCard(module, router));
             }
-
             scrollPane.setContent(modulesVBox);
-            content.getChildren().addAll(title, requestButtons, scrollPane);
+            content.getChildren().addAll(title, new HBox(10, requestModuleBtn, requestJobBtn), scrollPane);
             VBox.setVgrow(scrollPane, Priority.ALWAYS);
         }
-
         return content;
     }
 
-    private static VBox createModuleCard(LearningModule module) {
+    private static VBox createModuleCard(LearningModule module, SceneRouter router) {
         VBox card = new VBox(8);
         card.setPadding(new Insets(15));
         card.setStyle("-fx-background-color: #161B22; -fx-border-radius: 6; -fx-border-color: #30363D;");
@@ -197,9 +148,7 @@ public class StudentDashBoardView {
 
         Label modulePath = new Label("Path: " + module.getLearningPath());
         modulePath.setStyle("-fx-font-size: 12; -fx-text-fill: #8b949e;");
-        modulePath.setAccessibleText("Learning Path: " + module.getLearningPath());
 
-        // Progress Bar with accessible label
         double progress = module.getProgress() / 100.0;
         ProgressBar progressBar = new ProgressBar(progress);
         progressBar.setMaxWidth(Double.MAX_VALUE);
@@ -208,19 +157,18 @@ public class StudentDashBoardView {
 
         Label progressLabel = new Label(module.getProgress() + "% Complete");
         progressLabel.setStyle("-fx-font-size: 11; -fx-text-fill: #8b949e;");
-        progressLabel.setAccessibleText(module.getProgress() + "% Complete");
 
-        card.getChildren().addAll(moduleTitle, modulePath, progressBar, progressLabel);
+        Button openModuleBtn = new Button("Open Module");
+        openModuleBtn.setOnAction(e -> { UserContext.getInstance().setSelectedModuleId(module.getModuleID()); router.goToModules(); });
+
+        card.getChildren().addAll(moduleTitle, modulePath, progressBar, progressLabel, openModuleBtn);
         return card;
     }
 
-    private static VBox createAssessmentsContent(Student student) {
-        VBox content = new VBox(15);
-        content.setPadding(new Insets(20));
-        content.setStyle("-fx-background-color: #0D1117;");
+    private static VBox createAssessmentsContent(Student student, SceneRouter router) {
+        VBox content = UIComponents.contentBox(15);
 
-        Label title = new Label("Assessments");
-        title.setStyle("-fx-font-size: 18; -fx-font-weight: bold; -fx-text-fill: #ffffff;");
+        Label title = UIComponents.sectionTitle("Assessments");
         title.setAccessibleText("Assessments section");
 
         List<Assessment> assessments = student.getAssessmentResults();
@@ -231,41 +179,45 @@ public class StudentDashBoardView {
             noAssessments.setAccessibleText("You have no pending assessments");
             content.getChildren().addAll(title, noAssessments);
         } else {
-            ScrollPane scrollPane = new ScrollPane();
-            scrollPane.setFitToWidth(true);
-            scrollPane.setStyle("-fx-background-color: #0D1117; -fx-control-inner-background: #0D1117;");
-
+            ScrollPane scrollPane = UIComponents.darkScrollPane();
             VBox assessmentsVBox = new VBox(10);
             assessmentsVBox.setPadding(new Insets(10));
-
             for (Assessment assessment : assessments) {
-                VBox assessmentCard = createAssessmentCard(assessment);
-                assessmentsVBox.getChildren().add(assessmentCard);
+                assessmentsVBox.getChildren().add(createAssessmentCard(assessment, router));
             }
-
             scrollPane.setContent(assessmentsVBox);
             content.getChildren().addAll(title, scrollPane);
             VBox.setVgrow(scrollPane, Priority.ALWAYS);
         }
-
         return content;
     }
 
-    private static VBox createAssessmentCard(Assessment assessment) {
+    private static VBox createAssessmentCard(Assessment assessment, SceneRouter router) {
         VBox card = new VBox(8);
         card.setPadding(new Insets(15));
         card.setStyle("-fx-background-color: #161B22; -fx-border-radius: 6; -fx-border-color: #30363D;");
         card.setAccessibleRole(AccessibleRole.NODE);
 
-        Label assessmentTitle = new Label("Assessment for: " + assessment.getLearningPath());
+        String moduleSubject = (assessment.getModuleSubject() == null || assessment.getModuleSubject().isBlank())
+                ? "Module #" + assessment.getModuleID() : assessment.getModuleSubject();
+
+        Label assessmentTitle = new Label("Assessment: " + moduleSubject);
         assessmentTitle.setStyle("-fx-font-size: 14; -fx-font-weight: bold; -fx-text-fill: #ffa657;");
-        assessmentTitle.setAccessibleText("Assessment for: " + assessment.getLearningPath());
+        assessmentTitle.setAccessibleText("Assessment for module subject: " + moduleSubject);
+
+        Label pathLabel = new Label("Learning Path: " + assessment.getLearningPath());
+        pathLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #8b949e;");
 
         Label gradeLabel = new Label("Grade: " + (assessment.getGrade() >= 0 ? assessment.getGrade() + "%" : "Not yet graded"));
         gradeLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #8b949e;");
         gradeLabel.setAccessibleText("Grade: " + (assessment.getGrade() >= 0 ? assessment.getGrade() + " percent" : "Not yet graded"));
 
-        Node renderedContent = AssessmentFormRenderer.createPreview(assessment.getContent());
+        if (assessment.isCompleted()) {
+            Label completedLabel = new Label("Assessment " + assessment.getAssessmentID() + ": " + moduleSubject);
+            completedLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #c9d1d9;");
+            card.getChildren().addAll(assessmentTitle, pathLabel, completedLabel, gradeLabel);
+            return card;
+        }
 
         Button takeButton = new Button("Take Assessment");
         takeButton.setStyle("-fx-font-size: 11;");
@@ -273,63 +225,25 @@ public class StudentDashBoardView {
         takeButton.setOnAction(e -> {
             Student currentStudent = (Student) UserContext.getInstance().getCurrentUser();
             String responses = AssessmentFormRenderer.collectStudentResponses(assessment);
-            if (responses == null) {
-                return;
-            }
-
+            if (responses == null) return;
             try {
                 Integer educatorId = new dbConnector().findEducatorForModule(assessment.getModuleID());
-                if (educatorId == null) {
-                    showInfo("Could not locate the educator for this assessment.");
-                    return;
+                if (educatorId == null) { UIComponents.showInfo("Could not locate the educator for this assessment."); return; }
+                String submissionMessage = "Assessment " + assessment.getAssessmentID() + " Submitted for Module: " + moduleSubject;
+                boolean sent = currentStudent.sendMessage(educatorId, submissionMessage);
+                if (sent) {
+                    boolean markedComplete = new dbConnector().updateAssessmentCompletion(currentStudent.getId(), assessment.getAssessmentID(), true);
+                    UIComponents.showInfo(markedComplete ? "Assessment responses submitted successfully." : "Responses sent, but completion state was not updated.");
+                    if (markedComplete) router.goToDashboard(currentStudent.getId(), "Student");
+                } else {
+                    UIComponents.showInfo("Failed to submit assessment.");
                 }
-                boolean sent = currentStudent.sendMessage(educatorId, "Assessment Submission", responses);
-                showInfo(sent ? "Assessment responses submitted successfully." : "Failed to submit assessment.");
             } catch (Exception ex) {
-                showInfo("Failed to submit assessment: " + ex.getMessage());
+                UIComponents.showInfo("Failed to submit assessment: " + ex.getMessage());
             }
         });
 
-        card.getChildren().addAll(assessmentTitle, renderedContent, gradeLabel, takeButton);
-        return card;
-    }
-
-    private static VBox createInboxContent(Student student, SceneRouter router) {
-        VBox content = new VBox(15);
-        content.setPadding(new Insets(20));
-        content.setStyle("-fx-background-color: #0D1117;");
-
-        Label title = new Label("Inbox");
-        title.setStyle("-fx-font-size: 18; -fx-font-weight: bold; -fx-text-fill: #ffffff;");
-        title.setAccessibleText("Inbox section for messages");
-
-        Button viewMessagesBtn = new Button("View Messages");
-        viewMessagesBtn.setAccessibleText("View all messages button");
-        viewMessagesBtn.setOnAction(e -> router.goToInbox());
-
-        Label messageCount = new Label("You have no new messages");
-        messageCount.setStyle("-fx-font-size: 14; -fx-text-fill: #aaaaaa;");
-        messageCount.setAccessibleText("You have no new messages");
-
-        content.getChildren().addAll(title, viewMessagesBtn, messageCount);
-        return content;
-    }
-
-    private static VBox createStatCard(String title, String value, String description) {
-        VBox card = new VBox(8);
-        card.setPadding(new Insets(15));
-        card.setStyle("-fx-background-color: #161B22; -fx-border-radius: 6;");
-        card.setAccessibleText(description);
-
-        Label titleLabel = new Label(title);
-        titleLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #8b949e;");
-        titleLabel.setAccessibleText(title);
-
-        Label valueLabel = new Label(value);
-        valueLabel.setStyle("-fx-font-size: 24; -fx-font-weight: bold; -fx-text-fill: #58a6ff;");
-        valueLabel.setAccessibleText(value);
-
-        card.getChildren().addAll(titleLabel, valueLabel);
+        card.getChildren().addAll(assessmentTitle, pathLabel, gradeLabel, takeButton);
         return card;
     }
 
@@ -338,10 +252,9 @@ public class StudentDashBoardView {
         pathDialog.setTitle("Module Request");
         pathDialog.setHeaderText("Request a new learning module");
         pathDialog.setContentText("Learning path:");
-
         pathDialog.showAndWait().ifPresent(path -> {
             boolean sent = student.requestLearningModule(path, "Requested from student dashboard");
-            showInfo(sent ? "Request sent to counselor." : "Failed to send request.");
+            UIComponents.showInfo(sent ? "Request sent to counselor." : "Failed to send request.");
         });
     }
 
@@ -350,22 +263,14 @@ public class StudentDashBoardView {
         jobDialog.setTitle("Job Program Request");
         jobDialog.setHeaderText("Request a job program");
         jobDialog.setContentText("Job Program ID:");
-
         jobDialog.showAndWait().ifPresent(value -> {
             try {
                 int jobId = Integer.parseInt(value.trim());
                 boolean sent = student.requestWorkProgram(jobId, "Requested from student dashboard");
-                showInfo(sent ? "Request sent to counselor." : "Failed to send request.");
+                UIComponents.showInfo(sent ? "Request sent to counselor." : "Failed to send request.");
             } catch (NumberFormatException ex) {
-                showInfo("Please enter a valid numeric job program ID.");
+                UIComponents.showInfo("Please enter a valid numeric job program ID.");
             }
         });
-    }
-
-    private static void showInfo(String message) {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
     }
 }

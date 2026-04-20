@@ -144,7 +144,15 @@ public class CreateAssessmentView {
 
             try {
                 AssessmentForm formContent = formBuilder.buildForm();
-                Assessment newAssessment = new Assessment(0, selectedModule.getModuleID(), -1, selectedModule.getLearningPath(), formContent.toJson());
+                Assessment newAssessment = new Assessment(
+                        0,
+                        selectedModule.getModuleID(),
+                        -1,
+                        selectedModule.getLearningPath(),
+                        selectedModule.getSubject(),
+                        formContent.toJson(),
+                        false
+                );
                 educator.addAssessment(newAssessment);
                 showAlert("Success", "Assessment created and saved successfully!");
                 router.goToDashboard(educator.getId(), "Educator");

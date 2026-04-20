@@ -35,14 +35,7 @@ public class AssessmentView {
 
         Button backBtn = new Button("← Back");
         backBtn.setStyle("-fx-font-size: 12;");
-        backBtn.setOnAction(e -> {
-            String userType = currentUser.getAcctType();
-            switch (userType) {
-                case "Student" -> router.goToDashboard(currentUser.getId(), "Student");
-                case "Educator" -> router.goToDashboard(currentUser.getId(), "Educator");
-                default -> router.goToLogin();
-            }
-        });
+        backBtn.setOnAction(e -> router.goToCurrentUserDashboard());
 
         Label title = new Label("Assessments");
         title.setStyle("-fx-font-size: 20; -fx-font-weight: bold; -fx-text-fill: #ffffff;");
@@ -77,7 +70,7 @@ public class AssessmentView {
 
         if (assessments != null && !assessments.isEmpty()) {
             for (Assessment assessment : assessments) {
-                VBox assessmentCard = createAssessmentDetailCard(assessment, currentUser instanceof Student);
+                VBox assessmentCard = createAssessmentDetailCard(assessment, currentUser instanceof Student, router);
                 assessmentsVBox.getChildren().add(assessmentCard);
             }
         } else {
@@ -97,64 +90,46 @@ public class AssessmentView {
         return scene;
     }
 
-    private static VBox createAssessmentDetailCard(Assessment assessment, boolean isStudent) {
+    private static VBox createAssessmentDetailCard(Assessment assessment, boolean isStudent, SceneRouter router) {
         VBox card = new VBox(12);
         card.setPadding(new Insets(20));
         card.setStyle("-fx-background-color: #161B22; -fx-border-radius: 8; -fx-border-color: #30363D;");
         card.setAccessibleRole(AccessibleRole.NODE);
 
-        Label title = new Label(assessment.getLearningPath());
+        String moduleSubject = (assessment.getModuleSubject() == null || assessment.getModuleSubject().isBlank())
+                ? "Module #" + assessment.getModuleID()
+                : assessment.getModuleSubject();
+
+        Label title = new Label(moduleSubject);
         title.setStyle("-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #ffa657;");
-        title.setAccessibleText("Assessment: " + assessment.getLearningPath());
+        title.setAccessibleText("Assessment: " + moduleSubject);
         title.setWrapText(true);
 
-        Label statusLabel;
+        Label pathLabel = new Label("Learning Path: " + assessment.getLearningPath());
+        pathLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #8b949e;");
+        pathLabel.setAccessibleText("Learning Path: " + assessment.getLearningPath());
+
         if (isStudent) {
-            String status = assessment.getGrade() >= 0 ? "Completed" : "Pending";
-            statusLabel = new Label("Status: " + status);
-            statusLabel.setStyle("-fx-font-size: 12; -fx-text-fill: " + (assessment.getGrade() >= 0 ? "#238636" : "#f85149") + ";");
+            String status = assessment.isCompleted() ? "Completed" : "Pending";
+            Label statusLabel = new Label("Status: " + status);
+            statusLabel.setStyle("-fx-font-size: 12; -fx-text-fill: " + (assessment.isCompleted() ? "#238636" : "#f85149") + ";");
             statusLabel.setAccessibleText("Status: " + status);
-        } else {
-            statusLabel = new Label("Assessment ID: " + assessment.getAssessmentID());
-            statusLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #8b949e;");
-            statusLabel.setAccessibleText("Assessment ID: " + assessment.getAssessmentID());
-        }
-
-        Label content = new Label(assessment.getContent());
-        content.setStyle("-fx-font-size: 12; -fx-text-fill: #c9d1d9; -fx-wrap-text: true;");
-        content.setWrapText(true);
-        content.setAccessibleText("Assessment content: " + assessment.getContent());
-
-        if (isStudent) {
             Label gradeLabel = new Label("Grade: " + (assessment.getGrade() >= 0 ? assessment.getGrade() + "%" : "Not Graded"));
             gradeLabel.setStyle("-fx-font-size: 14; -fx-font-weight: bold; -fx-text-fill: #58a6ff;");
             gradeLabel.setAccessibleText("Your grade: " + (assessment.getGrade() >= 0 ? assessment.getGrade() + " percent" : "Not Graded"));
 
-            Button takeBtn = new Button("Take Assessment");
-            takeBtn.setStyle("-fx-font-size: 12; -fx-padding: 10;");
-            takeBtn.setAccessibleText("Start this assessment");
-            takeBtn.setOnAction(e -> {
-                User user = UserContext.getInstance().getCurrentUser();
-                String responses = AssessmentFormRenderer.collectStudentResponses(assessment);
-                if (responses == null) {
-                    return;
-                }
+            Label summaryLabel = new Label("Assessment " + assessment.getAssessmentID() + ": " + moduleSubject);
+            summaryLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #c9d1d9;");
 
-                try {
-                    Integer educatorId = new dbConnector().findEducatorForModule(assessment.getModuleID());
-                    if (educatorId == null) {
-                        showInfo("Could not locate the educator for this assessment.");
-                        return;
-                    }
-                    boolean sent = user.sendMessage(educatorId, "Assessment Submission", responses);
-                    showInfo(sent ? "Assessment responses submitted to the educator." : "Failed to submit assessment responses.");
-                } catch (Exception ex) {
-                    showInfo("Failed to submit assessment: " + ex.getMessage());
-                }
-            });
+            card.getChildren().addAll(title, pathLabel, statusLabel, summaryLabel, gradeLabel);
 
-            Node renderedContent = AssessmentFormRenderer.createPreview(assessment.getContent());
-            card.getChildren().addAll(title, statusLabel, renderedContent, gradeLabel, takeBtn);
+            if (!assessment.isCompleted()) {
+                Button takeBtn = new Button("Take Assessment");
+                takeBtn.setStyle("-fx-font-size: 12; -fx-padding: 10; -fx-background-color: #238636; -fx-text-fill: white;");
+                takeBtn.setAccessibleText("Start this assessment");
+                takeBtn.setOnAction(e -> router.goToTakeAssessment(assessment));
+                card.getChildren().add(takeBtn);
+            }
         } else {
             HBox buttonBox = new HBox(10);
             Button editBtn = new Button("Edit");
@@ -182,8 +157,12 @@ public class AssessmentView {
             });
             buttonBox.getChildren().addAll(editBtn, viewResultsBtn);
 
+            Label educatorStatusLabel = new Label("Assessment ID: " + assessment.getAssessmentID());
+            educatorStatusLabel.setStyle("-fx-font-size: 12; -fx-text-fill: #8b949e;");
+            educatorStatusLabel.setAccessibleText("Assessment ID: " + assessment.getAssessmentID());
+
             Node renderedContent = AssessmentFormRenderer.createPreview(assessment.getContent());
-            card.getChildren().addAll(title, statusLabel, renderedContent, buttonBox);
+            card.getChildren().addAll(title, pathLabel, educatorStatusLabel, renderedContent, buttonBox);
         }
 
         return card;

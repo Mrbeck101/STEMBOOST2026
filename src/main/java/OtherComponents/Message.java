@@ -5,13 +5,11 @@ public class Message {
     private int convoID = -1;
     private int senderID;
     private int receiverID;
-    private String subject;
     private String content;
 
-    public Message(int senderID, int receiverID, String subject, String content) {
+    public Message(int senderID, int receiverID, String content) {
         this.senderID = senderID;
         this.receiverID = receiverID;
-        this.subject = subject;
         this.content = content;
     }
 
@@ -35,9 +33,6 @@ public class Message {
         return this.receiverID;
     }
 
-    public String getSubject() {
-        return this.subject;
-    }
 
     public String getContent() {
         return this.content;
