@@ -68,6 +68,11 @@ public class dbConnector {
     // ── public methods ───────────────────────────────────────────────────────
 
     public boolean addUser(String email, String password, String fname, String lname, String acctType, String company) throws SQLException {
+        return addUser(email, password, fname, lname, acctType, company, null, null);
+    }
+
+    public boolean addUser(String email, String password, String fname, String lname, String acctType,
+                           String company, Integer associatedStudentId, String university) throws SQLException {
         try (Connection conn = getConnection()) {
             conn.setAutoCommit(false);
             try {
@@ -85,13 +90,23 @@ public class dbConnector {
                 }
 
                 try (PreparedStatement ps2 = conn.prepareStatement(
-                        "INSERT INTO accounts (user_id, first_name, last_name, acct_type, company, contact_info) VALUES (?, ?, ?, ?, ?, ?)")) {
+                        "INSERT INTO accounts (user_id, first_name, last_name, acct_type, company, contact_info, associated_id, university) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
                     ps2.setInt(1, userId);
                     ps2.setString(2, fname);
                     ps2.setString(3, lname);
                     ps2.setString(4, acctType);
                     ps2.setString(5, company == null ? "" : company.trim());
                     ps2.setString(6, "{\"email\":\"" + email + "\",\"phone\":\"\",\"address\":\"\"}");
+                    if (associatedStudentId == null) {
+                        ps2.setNull(7, Types.INTEGER);
+                    } else {
+                        ps2.setInt(7, associatedStudentId);
+                    }
+                    if (university == null || university.isBlank()) {
+                        ps2.setNull(8, Types.VARCHAR);
+                    } else {
+                        ps2.setString(8, university.trim());
+                    }
                     ps2.executeUpdate();
                 }
 
@@ -108,11 +123,11 @@ public class dbConnector {
     public Pair<Integer, String> searchUserDB(String email, String password) {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                     "SELECT user_id, user_type FROM users WHERE email=? AND password=?")) {
+                     "SELECT user_id, acct_type FROM users WHERE email=? AND password=?")) {
             ps.setString(1, email);
             ps.setString(2, CryptoUtil.encrypt(password));
             ResultSet rs = ps.executeQuery();
-            return rs.next() ? new Pair<>(rs.getInt("user_id"), rs.getString("user_type"))
+            return rs.next() ? new Pair<>(rs.getInt("user_id"), rs.getString("acct_type"))
                              : new Pair<>(-1, "Not Found");
         } catch (SQLException e) {
             throw new DataAccessException("Failed to retrieve user from database", e);
@@ -179,6 +194,14 @@ public class dbConnector {
         } catch (SQLException e) {
             throw new DataAccessException("Failed to retrieve user from database", e);
         }
+    }
+
+    /** Creates a message trail between employer and student so the employer appears in student contacts. */
+    public boolean linkEmployerContactForStudent(int employerId, int studentId, int counselorId, int jobId, String jobType) {
+        String safeType = (jobType == null || jobType.isBlank()) ? "job opportunity" : jobType;
+        String content = "Counselor recommendation: You were matched with " + safeType +
+                " (Job #" + jobId + "). Reply here to contact the employer directly.";
+        return addMessage(new Message(employerId, studentId, content));
     }
 
     public HashMap<String, Object> searchAccountDB(int id, String query) {
@@ -636,6 +659,15 @@ public class dbConnector {
                     SELECT a.user_id, a.first_name, a.last_name, a.acct_type, a.contact_info
                     FROM accounts a
                     WHERE a.user_id = (SELECT assigned_counselor FROM accounts WHERE user_id = ?) AND a.acct_type = 'Counselor'
+                    """, studentID));
+            contacts.addAll(queryContacts(conn, """
+                    SELECT DISTINCT a.user_id, a.first_name, a.last_name, a.acct_type, a.contact_info
+                    FROM accounts a
+                    JOIN messages m ON (
+                        (m.sender_id = a.user_id AND m.receiver_id = ?)
+                        OR (m.receiver_id = a.user_id AND m.sender_id = ?)
+                    )
+                    WHERE a.acct_type = 'Employer'
                     """, studentID));
             return contacts;
         } catch (SQLException e) {

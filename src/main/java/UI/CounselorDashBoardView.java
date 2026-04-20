@@ -1,5 +1,7 @@
 package UI;
 
+import DatabaseController.dbConnector;
+import OtherComponents.Message;
 import UserFactory.Counselor;
 import Services.FetchProfileService;
 import javafx.geometry.*;
@@ -24,7 +26,7 @@ public class CounselorDashBoardView {
         Tab dashboardTab = new Tab("Dashboard", createDashboardContent(counselor));
         Tab studentsTab = new Tab("My Students", createStudentsContent(counselor, router));
         Tab modulesTab = new Tab("Browse Modules", UIComponents.browseModulesTab("Browse Modules", "Open the module catalog and filter by learning path.", router));
-        Tab jobsTab = new Tab("Job Programs", createJobProgramSearchContent());
+        Tab jobsTab = new Tab("Job Programs", createJobProgramSearchContent(counselor));
         Tab inboxTab = new Tab("Inbox", UIComponents.inboxTab(counselor, router));
 
         tabPane.getTabs().addAll(dashboardTab, studentsTab, modulesTab, jobsTab, inboxTab);
@@ -118,7 +120,7 @@ public class CounselorDashBoardView {
         return card;
     }
 
-    private static VBox createJobProgramSearchContent() {
+    private static VBox createJobProgramSearchContent(Counselor counselor) {
         VBox content = UIComponents.contentBox(12);
         content.getChildren().add(UIComponents.sectionTitle("Search Job Programs"));
 
@@ -146,12 +148,17 @@ public class CounselorDashBoardView {
                 VBox card = new VBox(4);
                 card.setPadding(new Insets(10));
                 card.setStyle("-fx-background-color: #161B22; -fx-border-color: #30363D; -fx-border-radius: 5;");
+                Button recommendBtn = new Button("Recommend to Student");
+                recommendBtn.setOnAction(e -> recommendJobToStudent(counselor, job));
                 card.getChildren().addAll(
+                        new Label("Job ID: #" + job.get("jobId")),
+                        new Label("Employer ID: #" + job.get("employerId")),
                         new Label("Job: " + job.get("jobType")),
                         new Label("Learning Path: " + job.get("learningPath")),
                         new Label("Company: " + job.get("company")),
                         new Label("Employer: " + job.get("employerName")),
-                        new Label("Description: " + job.get("description"))
+                        new Label("Description: " + job.get("description")),
+                        recommendBtn
                 );
                 results.getChildren().add(card);
             }
@@ -162,5 +169,86 @@ public class CounselorDashBoardView {
 
         content.getChildren().addAll(pathFilter, searchField, searchBtn, results);
         return content;
+    }
+
+    private static void recommendJobToStudent(Counselor counselor, java.util.HashMap<String, Object> job) {
+        List<Integer> assignedStudents = counselor.getAssignedStudents();
+        if (assignedStudents == null || assignedStudents.isEmpty()) {
+            UIComponents.showInfo("No assigned students available for recommendation.");
+            return;
+        }
+
+        FetchProfileService service = new FetchProfileService();
+        ComboBox<String> studentPicker = new ComboBox<>();
+        java.util.HashMap<String, Integer> labelToId = new java.util.HashMap<>();
+
+        for (Integer studentId : assignedStudents) {
+            HashMap<String, Object> summary = service.getAccountSummary(studentId);
+            String name = (summary != null && summary.get("name") != null)
+                    ? (String) summary.get("name")
+                    : "Student #" + studentId;
+            String label = name + " (ID #" + studentId + ")";
+            studentPicker.getItems().add(label);
+            labelToId.put(label, studentId);
+        }
+        studentPicker.getSelectionModel().selectFirst();
+        studentPicker.setMaxWidth(Double.MAX_VALUE);
+
+        TextArea note = new TextArea();
+        note.setPromptText("Optional note to student...");
+        note.setPrefRowCount(3);
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Recommend Job Program");
+        dialog.setHeaderText("Send job + employer details to a student");
+        dialog.getDialogPane().setContent(new VBox(10,
+                new Label("Student"), studentPicker,
+                new Label("Additional Note"), note
+        ));
+        ButtonType sendType = new ButtonType("Send Recommendation", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(sendType, ButtonType.CANCEL);
+
+        dialog.showAndWait().ifPresent(result -> {
+            if (result != sendType) return;
+            try {
+                Integer studentId = labelToId.get(studentPicker.getValue());
+                if (studentId == null) {
+                    UIComponents.showInfo("Please select a student.");
+                    return;
+                }
+
+                int jobId = ((Number) job.get("jobId")).intValue();
+                int employerId = ((Number) job.get("employerId")).intValue();
+                String jobType = String.valueOf(job.get("jobType"));
+                String employerName = String.valueOf(job.get("employerName"));
+                String company = String.valueOf(job.get("company"));
+                String learningPath = String.valueOf(job.get("learningPath"));
+                String description = String.valueOf(job.get("description"));
+
+                String content = "Job Recommendation from Counselor\n"
+                        + "Job ID: #" + jobId + "\n"
+                        + "Employer ID: #" + employerId + "\n"
+                        + "Employer: " + employerName + " (" + company + ")\n"
+                        + "Job Type: " + jobType + "\n"
+                        + "Learning Path: " + learningPath + "\n"
+                        + "Description: " + description + "\n"
+                        + (note.getText().isBlank() ? "" : ("Counselor Note: " + note.getText().trim()));
+
+                boolean sentToStudent = counselor.sendMessage(studentId, content);
+                boolean employerLinked = new dbConnector().linkEmployerContactForStudent(
+                        employerId, studentId, counselor.getId(), jobId, jobType
+                );
+
+                if (sentToStudent && employerLinked) {
+                    UIComponents.showInfo("Recommendation sent and employer added to student contacts.");
+                } else if (sentToStudent) {
+                    UIComponents.showInfo("Recommendation sent, but employer contact link could not be confirmed.");
+                } else {
+                    UIComponents.showInfo("Recommendation failed to send.");
+                }
+            } catch (Exception ex) {
+                UIComponents.showInfo("Failed to send recommendation: " + ex.getMessage());
+            }
+        });
     }
 }

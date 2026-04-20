@@ -8,7 +8,6 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 
 import java.util.HashMap;
-import java.util.List;
 
 public class AdminDashboardView {
 
@@ -24,7 +23,7 @@ public class AdminDashboardView {
         TabPane tabPane = new TabPane();
         tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabPane.getTabs().addAll(
-                new Tab("Users", createUsersContent(admin)),
+                new Tab("Users", createUsersContent(admin, router)),
                 new Tab("Modules", createModulesContent(admin)),
                 new Tab("Job Programs", createJobsContent(admin)),
                 new Tab("Inbox", UIComponents.inboxTab(admin, router))
@@ -36,9 +35,14 @@ public class AdminDashboardView {
         );
     }
 
-    private static VBox createUsersContent(Admin admin) {
+    private static VBox createUsersContent(Admin admin, SceneRouter router) {
         VBox content = UIComponents.contentBox(10);
-        content.getChildren().add(UIComponents.sectionTitle("All Users"));
+        content.getChildren().addAll(
+                UIComponents.sectionTitle("Create User"),
+                createUserForm(admin, router),
+                new Separator(),
+                UIComponents.sectionTitle("All Users")
+        );
 
         ScrollPane scrollPane = UIComponents.darkScrollPane();
         VBox rows = new VBox(8);
@@ -68,6 +72,149 @@ public class AdminDashboardView {
         content.getChildren().add(scrollPane);
         VBox.setVgrow(scrollPane, Priority.ALWAYS);
         return content;
+    }
+
+    private static VBox createUserForm(Admin admin, SceneRouter router) {
+        VBox form = new VBox(10);
+        form.setPadding(new Insets(15));
+        form.setStyle("-fx-background-color: #161B22; -fx-border-color: #30363D; -fx-border-radius: 6;");
+
+        GridPane fields = new GridPane();
+        fields.setHgap(12);
+        fields.setVgap(10);
+
+        TextField firstName = new TextField();
+        TextField lastName = new TextField();
+        TextField email = new TextField();
+        PasswordField password = new PasswordField();
+        PasswordField confirmPassword = new PasswordField();
+        ComboBox<String> acctType = new ComboBox<>();
+        acctType.getItems().addAll("Educator", "Student", "Parent", "Counselor", "Employer", "University", "Admin");
+        acctType.setMaxWidth(Double.MAX_VALUE);
+
+        TextField associatedStudent = new TextField();
+        TextField company = new TextField();
+        TextField university = new TextField();
+
+        Label associatedStudentLabel = new Label("Associated Student ID");
+        Label companyLabel = new Label("Company Name");
+        Label universityLabel = new Label("University Name");
+        Label errorLabel = new Label();
+        errorLabel.setStyle("-fx-text-fill: #ff7b72;");
+        errorLabel.setWrapText(true);
+
+        Runnable updateFieldVisibility = () -> {
+            String type = acctType.getValue();
+            boolean showParent = "Parent".equals(type);
+            boolean showEmployer = "Employer".equals(type);
+            boolean showUniversity = "Student".equals(type) || "University".equals(type);
+
+            associatedStudentLabel.setManaged(showParent);
+            associatedStudentLabel.setVisible(showParent);
+            associatedStudent.setManaged(showParent);
+            associatedStudent.setVisible(showParent);
+
+            companyLabel.setManaged(showEmployer);
+            companyLabel.setVisible(showEmployer);
+            company.setManaged(showEmployer);
+            company.setVisible(showEmployer);
+
+            universityLabel.setManaged(showUniversity);
+            universityLabel.setVisible(showUniversity);
+            university.setManaged(showUniversity);
+            university.setVisible(showUniversity);
+        };
+
+        acctType.setOnAction(e -> updateFieldVisibility.run());
+        updateFieldVisibility.run();
+
+        int row = 0;
+        fields.add(new Label("First Name"), 0, row);
+        fields.add(firstName, 1, row++);
+        fields.add(new Label("Last Name"), 0, row);
+        fields.add(lastName, 1, row++);
+        fields.add(new Label("Email"), 0, row);
+        fields.add(email, 1, row++);
+        fields.add(new Label("Password"), 0, row);
+        fields.add(password, 1, row++);
+        fields.add(new Label("Confirm Password"), 0, row);
+        fields.add(confirmPassword, 1, row++);
+        fields.add(new Label("Account Type"), 0, row);
+        fields.add(acctType, 1, row++);
+        fields.add(associatedStudentLabel, 0, row);
+        fields.add(associatedStudent, 1, row++);
+        fields.add(companyLabel, 0, row);
+        fields.add(company, 1, row++);
+        fields.add(universityLabel, 0, row);
+        fields.add(university, 1, row++);
+
+        ColumnConstraints left = new ColumnConstraints();
+        left.setMinWidth(160);
+        ColumnConstraints right = new ColumnConstraints();
+        right.setHgrow(Priority.ALWAYS);
+        fields.getColumnConstraints().addAll(left, right);
+
+        Button createBtn = new Button("Create User");
+        Button clearBtn = new Button("Clear");
+
+        Runnable clearForm = () -> {
+            firstName.clear();
+            lastName.clear();
+            email.clear();
+            password.clear();
+            confirmPassword.clear();
+            acctType.setValue(null);
+            associatedStudent.clear();
+            company.clear();
+            university.clear();
+            errorLabel.setText("");
+            updateFieldVisibility.run();
+        };
+
+        createBtn.setOnAction(e -> {
+            errorLabel.setText("");
+
+            if (!password.getText().equals(confirmPassword.getText())) {
+                errorLabel.setText("Passwords do not match.");
+                return;
+            }
+
+            try {
+                Integer associatedStudentId = null;
+                if (!associatedStudent.getText().isBlank()) {
+                    associatedStudentId = Integer.parseInt(associatedStudent.getText().trim());
+                }
+
+                boolean created = admin.createUser(
+                        email.getText(),
+                        password.getText(),
+                        firstName.getText(),
+                        lastName.getText(),
+                        acctType.getValue(),
+                        company.getText(),
+                        associatedStudentId,
+                        university.getText()
+                );
+
+                if (created) {
+                    UIComponents.showAlert("Success", "User account created.");
+                    router.goToDashboard(admin.getId(), admin.getAcctType());
+                } else {
+                    errorLabel.setText("User creation failed.");
+                }
+            } catch (NumberFormatException ex) {
+                errorLabel.setText("Associated student ID must be numeric.");
+            } catch (RuntimeException ex) {
+                errorLabel.setText(ex.getMessage());
+            }
+        });
+
+        clearBtn.setOnAction(e -> clearForm.run());
+
+        HBox actions = new HBox(10, createBtn, clearBtn);
+        actions.setAlignment(Pos.CENTER_LEFT);
+        form.getChildren().addAll(fields, actions, errorLabel);
+        return form;
     }
 
     private static VBox createModulesContent(Admin admin) {

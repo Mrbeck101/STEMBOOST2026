@@ -97,7 +97,7 @@ public class ModuleView {
 
             if (!modules.isEmpty()) {
                 for (LearningModule module : modules) {
-                    VBox moduleCard = createModuleDetailCard(module, currentUser instanceof Student);
+                    VBox moduleCard = createModuleDetailCard(module, currentUser instanceof Student, router);
                     modulesVBox.getChildren().add(moduleCard);
                 }
             } else {
@@ -147,7 +147,7 @@ public class ModuleView {
         return scene;
     }
 
-    private static VBox createModuleDetailCard(LearningModule module, boolean showProgress) {
+    private static VBox createModuleDetailCard(LearningModule module, boolean showProgress, SceneRouter router) {
         VBox card = new VBox(12);
         card.setPadding(new Insets(20));
         card.setStyle("-fx-background-color: #161B22; -fx-border-radius: 8; -fx-border-color: #30363D;");
@@ -186,6 +186,9 @@ public class ModuleView {
                     int nextProgress = Math.min(100, module.getProgress() + 10);
                     boolean updated = new dbConnector().updateModuleProgress(currentUser.getId(), module.getModuleID(), nextProgress);
                     showInfo(updated ? "Progress updated to " + nextProgress + "%" : "Progress update failed.");
+                    if (updated) {
+                        router.goToModules();
+                    }
                 } catch (Exception ex) {
                     showInfo("Failed to update progress: " + ex.getMessage());
                 }
@@ -199,6 +202,9 @@ public class ModuleView {
                     }
                     boolean updated = new dbConnector().updateModuleProgress(currentUser.getId(), module.getModuleID(), 100);
                     showInfo(updated ? "Module marked complete." : "Could not mark module complete.");
+                    if (updated) {
+                        router.goToModules();
+                    }
                 } catch (Exception ex) {
                     showInfo("Failed to complete module: " + ex.getMessage());
                 }

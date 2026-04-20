@@ -2,6 +2,7 @@ package UI;
 
 import OtherComponents.Assessment;
 import Services.UIRefreshService;
+import UserFactory.*;
 import javafx.stage.Stage;
 
 public class SceneRouter {
@@ -22,7 +23,35 @@ public class SceneRouter {
         stage.setScene(RegisterView.create(this));
     }
 
+    private void refreshCurrentUserFromDb() {
+        User currentUser = UserContext.getInstance().getCurrentUser();
+        if (currentUser == null) {
+            return;
+        }
+
+        try {
+            int userId = currentUser.getId();
+            String accountType = currentUser.getAcctType();
+            User refreshed = switch (accountType) {
+                case "Student" -> new Student(userId);
+                case "Educator" -> new Educator(userId);
+                case "Counselor" -> new Counselor(userId);
+                case "Parent" -> new Parent(userId);
+                case "Employer" -> new Employer(userId);
+                case "University" -> new University(userId);
+                case "Admin" -> new Admin(userId);
+                default -> null;
+            };
+            if (refreshed != null) {
+                UserContext.getInstance().setCurrentUser(refreshed);
+            }
+        } catch (Exception ignored) {
+            // Keep existing in-memory user if refresh fails transiently.
+        }
+    }
+
     public void goToDashboard(int id, String accountType) {
+        refreshCurrentUserFromDb();
         stage.setTitle("STEMBOOST - " + accountType + " Dashboard");
 
         switch (accountType) {
@@ -38,6 +67,7 @@ public class SceneRouter {
     }
 
     public void goToCurrentUserDashboard() {
+        refreshCurrentUserFromDb();
         var currentUser = UserContext.getInstance().getCurrentUser();
         if (currentUser == null) {
             goToLogin();
@@ -47,18 +77,22 @@ public class SceneRouter {
     }
 
     public void goToModules() {
+        refreshCurrentUserFromDb();
         stage.setScene(ModuleView.create(this));
     }
 
     public void goToAssessments() {
+        refreshCurrentUserFromDb();
         stage.setScene(AssessmentView.create(this));
     }
 
     public void goToInbox() {
+        refreshCurrentUserFromDb();
         stage.setScene(InboxView.create(this, -1));
     }
 
     public void goToInboxWithContact(int contactId) {
+        refreshCurrentUserFromDb();
         stage.setTitle("STEMBOOST - Inbox");
         stage.setScene(InboxView.create(this, contactId));
     }
@@ -69,16 +103,19 @@ public class SceneRouter {
     }
 
     public void goToLearningPathSelection() {
+        refreshCurrentUserFromDb();
         stage.setTitle("STEMBOOST - Learning Path Selection");
         stage.setScene(LearningPathSelectionView.create(this));
     }
 
     public void goToContacts() {
+        refreshCurrentUserFromDb();
         stage.setTitle("STEMBOOST - Contacts");
         stage.setScene(ContactsView.create(this));
     }
 
     public void goToProfile() {
+        refreshCurrentUserFromDb();
         stage.setTitle("STEMBOOST - Profile");
         stage.setScene(ProfileView.create(this));
     }

@@ -147,6 +147,9 @@ public class AssessmentView {
                     }
                     boolean updated = new dbConnector().updateAssessmentContent(assessment.getAssessmentID(), updatedContent.trim());
                     showInfo(updated ? "Assessment updated." : "Assessment update failed.");
+                    if (updated) {
+                        router.goToAssessments();
+                    }
                 });
             });
 

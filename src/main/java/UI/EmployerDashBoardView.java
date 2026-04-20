@@ -2,18 +2,27 @@ package UI;
 
 import UserFactory.Employer;
 import DatabaseController.dbConnector;
+import OtherComponents.Assessment;
 import OtherComponents.JobProgram;
+import OtherComponents.LearningModule;
 import Services.FetchProfileService;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import java.util.HashMap;
 import java.util.List;
 
 /**
  * Employer Dashboard View
  */
 public class EmployerDashBoardView {
+
+    private static final String[] JOB_TYPES = {
+            "Internship",
+            "Job Shadowing",
+            "Project contributor"
+    };
 
     public static Scene create(SceneRouter router) {
         Employer employer = (Employer) UIComponents.guardLogin(router);
@@ -61,20 +70,64 @@ public class EmployerDashBoardView {
             dialog.setTitle("Post New Job");
             dialog.setHeaderText("Create a new job program");
 
-            TextField jobTypeField = new TextField();
-            jobTypeField.setPromptText("Job Type");
+            ComboBox<String> jobTypeCombo = new ComboBox<>();
+            jobTypeCombo.getItems().addAll(JOB_TYPES);
+            jobTypeCombo.setValue("Internship");
+            jobTypeCombo.setMaxWidth(Double.MAX_VALUE);
             ComboBox<String> pathCombo = UIComponents.learningPathCombo();
-            TextField modReqField = new TextField("0");
-            TextField assessmentReqField = new TextField("0");
+
+            dbConnector db = new dbConnector();
+            ComboBox<String> moduleCombo = new ComboBox<>();
+            moduleCombo.setMaxWidth(Double.MAX_VALUE);
+            HashMap<String, Integer> moduleLabelToId = new HashMap<>();
+            for (LearningModule module : db.searchAllModulesDB()) {
+                String label = "#" + module.getModuleID() + " - " + module.getSubject();
+                moduleCombo.getItems().add(label);
+                moduleLabelToId.put(label, module.getModuleID());
+            }
+            if (!moduleCombo.getItems().isEmpty()) {
+                moduleCombo.getSelectionModel().selectFirst();
+            }
+
+            ComboBox<String> assessmentCombo = new ComboBox<>();
+            assessmentCombo.setMaxWidth(Double.MAX_VALUE);
+            HashMap<String, Integer> assessmentLabelToId = new HashMap<>();
+
+            Runnable refreshAssessments = () -> {
+                assessmentCombo.getItems().clear();
+                assessmentLabelToId.clear();
+                String selectedModule = moduleCombo.getValue();
+                if (selectedModule == null) {
+                    assessmentCombo.getItems().add("None");
+                    assessmentCombo.setValue("None");
+                    return;
+                }
+                Integer moduleId = moduleLabelToId.get(selectedModule);
+                List<Assessment> assessments = moduleId == null ? List.of() : db.searchAssessmentDB(moduleId, "Educator");
+                if (assessments.isEmpty()) {
+                    assessmentCombo.getItems().add("None");
+                    assessmentCombo.setValue("None");
+                    return;
+                }
+                for (Assessment assessment : assessments) {
+                    String label = "#" + assessment.getAssessmentID() + " - " + assessment.getModuleSubject();
+                    assessmentCombo.getItems().add(label);
+                    assessmentLabelToId.put(label, assessment.getAssessmentID());
+                }
+                assessmentCombo.getSelectionModel().selectFirst();
+            };
+            moduleCombo.setOnAction(e2 -> refreshAssessments.run());
+            refreshAssessments.run();
+
             TextArea descriptionArea = new TextArea();
-            descriptionArea.setPromptText("Job Description");
+            descriptionArea.setPromptText("Describe responsibilities, required skills, and include any inclusivity tools the role offers.");
 
             VBox form = new VBox(10,
-                    new Label("Job Type"), jobTypeField,
+                    new Label("Job Type"), jobTypeCombo,
                     new Label("Learning Path"), pathCombo,
-                    new Label("Module Requirement"), modReqField,
-                    new Label("Assessment Requirement"), assessmentReqField,
-                    new Label("Description"), descriptionArea
+                    new Label("Module Requirement"), moduleCombo,
+                    new Label("Assessment Requirement"), assessmentCombo,
+                    new Label("Description (include any inclusivity tools offered)"), descriptionArea
             );
             form.setPadding(new Insets(10));
 
@@ -85,13 +138,26 @@ public class EmployerDashBoardView {
             dialog.showAndWait().ifPresent(result -> {
                 if (result != saveType) return;
                 try {
+                    Integer selectedModuleId = moduleLabelToId.get(moduleCombo.getValue());
+                    if (selectedModuleId == null) {
+                        UIComponents.showInfo("Please select a module requirement.");
+                        return;
+                    }
+
+                    int selectedAssessmentId = 0;
+                    String selectedAssessment = assessmentCombo.getValue();
+                    if (selectedAssessment != null && !"None".equals(selectedAssessment)) {
+                        Integer aid = assessmentLabelToId.get(selectedAssessment);
+                        selectedAssessmentId = aid == null ? 0 : aid;
+                    }
+
                     JobProgram job = new JobProgram(
                             employer.getId(), 0, true,
-                            Integer.parseInt(modReqField.getText().trim()),
-                            Integer.parseInt(assessmentReqField.getText().trim()),
+                            selectedModuleId,
+                            selectedAssessmentId,
                             pathCombo.getValue(),
                             descriptionArea.getText().trim(),
-                            jobTypeField.getText().trim()
+                            jobTypeCombo.getValue()
                     );
                     boolean saved = new dbConnector().addJobProgram(job);
                     UIComponents.showInfo(saved ? "Job program posted." : "Failed to post job program.");
@@ -143,12 +209,38 @@ public class EmployerDashBoardView {
         Button deleteBtn = new Button("Close");
 
         editBtn.setOnAction(e -> {
-            TextInputDialog dd = new TextInputDialog(job.getDescription());
-            dd.setTitle("Edit Job Program");
-            dd.setHeaderText("Update description for " + job.getJobType());
-            dd.setContentText("Description:");
-            dd.showAndWait().ifPresent(desc -> {
-                job.setDescription(desc.trim());
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.setTitle("Edit Job Program");
+            dialog.setHeaderText("Update job details");
+
+            ComboBox<String> jobTypeCombo = new ComboBox<>();
+            jobTypeCombo.getItems().addAll(JOB_TYPES);
+            if (job.getJobType() != null && !job.getJobType().isBlank()) {
+                jobTypeCombo.setValue(job.getJobType());
+            }
+            if (jobTypeCombo.getValue() == null) {
+                jobTypeCombo.setValue("Internship");
+            }
+            jobTypeCombo.setMaxWidth(Double.MAX_VALUE);
+
+            TextArea descriptionArea = new TextArea(job.getDescription());
+            descriptionArea.setPromptText("Describe responsibilities, required skills, and include any inclusivity tools the role offers.");
+            descriptionArea.setPrefRowCount(4);
+
+            VBox form = new VBox(10,
+                    new Label("Job Type"), jobTypeCombo,
+                    new Label("Description (include any inclusivity tools offered)"), descriptionArea
+            );
+            form.setPadding(new Insets(10));
+
+            dialog.getDialogPane().setContent(form);
+            ButtonType saveType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE);
+            dialog.getDialogPane().getButtonTypes().addAll(saveType, ButtonType.CANCEL);
+
+            dialog.showAndWait().ifPresent(result -> {
+                if (result != saveType) return;
+                job.setJobType(jobTypeCombo.getValue());
+                job.setDescription(descriptionArea.getText().trim());
                 boolean updated = new dbConnector().updateJobProgram(job);
                 UIComponents.showInfo(updated ? "Job program updated." : "Job update failed.");
                 if (updated) router.goToDashboard(employer.getId(), "Employer");
