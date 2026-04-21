@@ -5,7 +5,6 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.util.Base64;
 import java.util.Properties;
-import java.io.FileInputStream;
 
 public class CryptoUtil {
 
@@ -27,8 +26,7 @@ public class CryptoUtil {
     }
 
     private static SecretKey fetchKey() throws Exception {
-        Properties props = new Properties();
-        props.load(new FileInputStream("db.properties"));
+        Properties props = DbPropertiesLoader.load();
         String keyStr = props.getProperty("db.encryptionKey");
         byte[] decodedKey = Base64.getDecoder().decode(keyStr);
         return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");

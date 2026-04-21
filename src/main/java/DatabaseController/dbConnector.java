@@ -10,7 +10,6 @@ import eu.hansolo.toolbox.tuples.Pair;
 
 import java.sql.*;
 import java.util.*;
-import java.io.FileInputStream;
 
 public class dbConnector {
 
@@ -24,10 +23,7 @@ public class dbConnector {
 
     private dbConnector() {
         try {
-            Properties props = new Properties();
-            try (FileInputStream fis = new FileInputStream("db.properties")) {
-                props.load(fis);
-            }
+            Properties props = DbPropertiesLoader.load();
             this.ip       = props.getProperty("db.ip");
             this.user     = props.getProperty("db.user");
             this.password = props.getProperty("db.password");
