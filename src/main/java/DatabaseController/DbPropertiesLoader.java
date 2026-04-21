@@ -14,11 +14,11 @@ final class DbPropertiesLoader {
 
 		// Classpath defaults packaged with the app.
 		loadFromClasspath(props, "db.properties");
-		loadFromClasspath(props, "dp.properties");
+
 
 		// External files (if present) override packaged defaults.
 		loadFromFile(props, "db.properties");
-		loadFromFile(props, "dp.properties");
+
 
 		if (props.isEmpty()) {
 			throw new IllegalStateException("No db/dp properties file found in classpath or working directory.");
