@@ -60,7 +60,7 @@ public class RegisterView {
         TextField lastName = new TextField();
 
         ComboBox<String> acctType = new ComboBox<>();
-        acctType.getItems().addAll("Educator", "Student", "Parent", "Counselor", "Employer", "University", "Admin");
+        acctType.getItems().addAll("Educator", "Student", "Parent", "Employer");
         acctType.setMaxWidth(Double.MAX_VALUE);
 
         TextField studentId = new TextField();

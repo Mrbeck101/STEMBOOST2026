@@ -28,7 +28,8 @@ public class EducatorDashBoardView {
                 new Tab("Browse All Modules", UIComponents.browseModulesTab("Browse All Modules", "Open the full module catalog and filter by learning path.", router)),
                 new Tab("Create Module", createCreateModuleContent(router)),
                 new Tab("Create Assessment", createCreateAssessmentContent(educator, router)),
-                new Tab("Inbox", UIComponents.inboxTab(educator, router))
+                new Tab("Inbox", UIComponents.inboxTab(educator, router)),
+                new Tab("Contact Info", UIComponents.contactInfoTab(educator))
         );
 
         return UIComponents.buildScene(

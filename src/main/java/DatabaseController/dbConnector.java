@@ -293,40 +293,63 @@ public class dbConnector {
     public List<HashMap<String, Object>> getContactsFromContactList(int userId) {
         initializeContactListIfNull(userId);
         try (Connection conn = getConnection()) {
-            Set<Integer> contactIds = getContactIds(conn, userId);
-            if (contactIds.isEmpty()) {
-                return List.of();
-            }
+            conn.setAutoCommit(false);
+            try {
+                Set<Integer> contactIds = getContactIds(conn, userId);
+                if (contactIds.isEmpty()) {
+                    conn.commit();
+                    return List.of();
+                }
 
-            StringBuilder sql = new StringBuilder("SELECT user_id, first_name, last_name, acct_type, contact_info FROM accounts WHERE user_id IN (");
-            List<Integer> ids = new ArrayList<>(contactIds);
-            for (int i = 0; i < ids.size(); i++) {
-                if (i > 0) sql.append(',');
-                sql.append('?');
-            }
-            sql.append(") ORDER BY first_name, last_name, user_id");
-
-            List<HashMap<String, Object>> contacts = new ArrayList<>();
-            try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+                StringBuilder sql = new StringBuilder("SELECT user_id, first_name, last_name, acct_type, contact_info FROM accounts WHERE user_id IN (");
+                List<Integer> ids = new ArrayList<>(contactIds);
                 for (int i = 0; i < ids.size(); i++) {
-                    ps.setInt(i + 1, ids.get(i));
+                    if (i > 0) sql.append(',');
+                    sql.append('?');
                 }
-                ResultSet rs = ps.executeQuery();
-                while (rs.next()) {
-                    contacts.add(contactFromRow(rs));
+                sql.append(") ORDER BY first_name, last_name, user_id");
+
+                List<HashMap<String, Object>> contacts = new ArrayList<>();
+                try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+                    for (int i = 0; i < ids.size(); i++) {
+                        ps.setInt(i + 1, ids.get(i));
+                    }
+                    ResultSet rs = ps.executeQuery();
+                    while (rs.next()) {
+                        contacts.add(contactFromRow(rs));
+                    }
                 }
-            }
 
-            // Clean up stale IDs that no longer exist.
-            Set<Integer> existing = new LinkedHashSet<>();
-            for (HashMap<String, Object> c : contacts) {
-                existing.add((Integer) c.get("user_id"));
-            }
-            if (!existing.equals(contactIds)) {
-                saveContactIds(conn, userId, existing);
-            }
+                // Clean up stale IDs that no longer exist and delete associated messages.
+                Set<Integer> existing = new LinkedHashSet<>();
+                for (HashMap<String, Object> c : contacts) {
+                    existing.add((Integer) c.get("user_id"));
+                }
+                if (!existing.equals(contactIds)) {
+                    // Find stale contact IDs and delete their messages.
+                    Set<Integer> staleIds = new LinkedHashSet<>(contactIds);
+                    staleIds.removeAll(existing);
 
-            return contacts;
+                    for (Integer staleContactId : staleIds) {
+                        try (PreparedStatement ps = conn.prepareStatement(
+                                "DELETE FROM messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)")) {
+                            ps.setInt(1, userId);
+                            ps.setInt(2, staleContactId);
+                            ps.setInt(3, staleContactId);
+                            ps.setInt(4, userId);
+                            ps.executeUpdate();
+                        }
+                    }
+
+                    saveContactIds(conn, userId, existing);
+                }
+
+                conn.commit();
+                return contacts;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw new DataAccessException("Failed to retrieve contact_list contacts", e);
+            }
         } catch (SQLException e) {
             throw new DataAccessException("Failed to retrieve contact_list contacts", e);
         }
@@ -905,7 +928,9 @@ public class dbConnector {
         List<Integer> students = new ArrayList<>();
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
-                     "SELECT student_id FROM counselor_students WHERE counselor_id = ?")) {
+                     "SELECT cs.student_id FROM counselor_students cs " +
+                     "JOIN accounts a ON cs.student_id = a.user_id " +
+                     "WHERE cs.counselor_id = ? AND a.acct_type = 'Student'")) {
             ps.setInt(1, counselorID);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) students.add(rs.getInt("student_id"));
@@ -942,8 +967,20 @@ public class dbConnector {
 
     public List<Integer> searchEnrolledStudentsDB(int universityID) {
         return queryIntList(
-                "SELECT user_id FROM accounts WHERE university = (SELECT university FROM accounts WHERE user_id = ?)",
+                "SELECT user_id FROM accounts WHERE acct_type = 'Student' AND university = (SELECT university FROM accounts WHERE user_id = ?)",
                 universityID, "Failed to retrieve enrolled students from database");
+    }
+
+    public boolean updateStudentUniversity(int studentId, String university) {
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                     "UPDATE accounts SET university = ? WHERE user_id = ? AND acct_type = 'Student'")) {
+            ps.setString(1, university == null ? null : university.trim());
+            ps.setInt(2, studentId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to update student university", e);
+        }
     }
 
     private List<Integer> queryIntList(String sql, int param, String errMsg) {

@@ -23,7 +23,8 @@ public class UniversityDashboardView {
                 new Tab("Dashboard", createDashboardContent(university)),
                 new Tab("Enrolled Students", createStudentsContent(university, router)),
                 new Tab("Report Cards", createReportCardsContent(university, router)),
-                new Tab("Inbox", UIComponents.inboxTab(university, router))
+                new Tab("Inbox", UIComponents.inboxTab(university, router)),
+                new Tab("Contact Info", UIComponents.contactInfoTab(university))
         );
 
         return UIComponents.buildScene(
@@ -41,8 +42,7 @@ public class UniversityDashboardView {
         content.getChildren().addAll(
                 UIComponents.sectionTitle("University Dashboard"),
                 UIComponents.statsRow(
-                        UIComponents.statCard("Total Enrolled", String.valueOf(studentCount)),
-                        UIComponents.statCard("Active Learning Paths", "0")
+                        UIComponents.statCard("Total Enrolled", String.valueOf(studentCount))
                 )
         );
         return content;
@@ -90,7 +90,7 @@ public class UniversityDashboardView {
 
         Button viewBtn = new Button("View Profile");
         Button contactBtn = new Button("Contact");
-        viewBtn.setOnAction(e -> router.goToStudentProfile(studentId));
+        viewBtn.setOnAction(e -> router.goToStudentLimitedView(studentId));
         contactBtn.setOnAction(e -> router.goToContacts());
 
         card.getChildren().addAll(studentLabel, statusLabel, new HBox(10, viewBtn, contactBtn));

@@ -8,6 +8,7 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 
 import java.util.HashMap;
+import java.util.List;
 
 public class AdminDashboardView {
 
@@ -26,7 +27,8 @@ public class AdminDashboardView {
                 new Tab("Users", createUsersContent(admin, router)),
                 new Tab("Modules", createModulesContent(admin)),
                 new Tab("Job Programs", createJobsContent(admin)),
-                new Tab("Inbox", UIComponents.inboxTab(admin, router))
+                new Tab("Inbox", UIComponents.inboxTab(admin, router)),
+                new Tab("Contact Info", UIComponents.contactInfoTab(admin))
         );
 
         return UIComponents.buildScene(
@@ -92,7 +94,9 @@ public class AdminDashboardView {
         acctType.getItems().addAll("Educator", "Student", "Parent", "Counselor", "Employer", "University", "Admin");
         acctType.setMaxWidth(Double.MAX_VALUE);
 
-        TextField associatedStudent = new TextField();
+        ComboBox<String> associatedStudent = new ComboBox<>();
+        associatedStudent.setPromptText("Select a student");
+        associatedStudent.setMaxWidth(Double.MAX_VALUE);
         TextField company = new TextField();
         TextField university = new TextField();
 
@@ -102,6 +106,23 @@ public class AdminDashboardView {
         Label errorLabel = new Label();
         errorLabel.setStyle("-fx-text-fill: #ff7b72;");
         errorLabel.setWrapText(true);
+
+        HashMap<String, Integer> studentLabelToId = new HashMap<>();
+        List<HashMap<String, Object>> users = admin.getAllUsers();
+        if (users != null) {
+            for (HashMap<String, Object> user : users) {
+                if (!"Student".equals(user.get("acctType"))) {
+                    continue;
+                }
+                Integer userId = user.get("userId") instanceof Integer ? (Integer) user.get("userId") : null;
+                String name = user.get("name") == null ? "Student" : String.valueOf(user.get("name"));
+                if (userId != null) {
+                    String label = name + " (ID #" + userId + ")";
+                    associatedStudent.getItems().add(label);
+                    studentLabelToId.put(label, userId);
+                }
+            }
+        }
 
         Runnable updateFieldVisibility = () -> {
             String type = acctType.getValue();
@@ -146,7 +167,7 @@ public class AdminDashboardView {
         fields.add(companyLabel, 0, row);
         fields.add(company, 1, row++);
         fields.add(universityLabel, 0, row);
-        fields.add(university, 1, row++);
+        fields.add(university, 1, row);
 
         ColumnConstraints left = new ColumnConstraints();
         left.setMinWidth(160);
@@ -164,7 +185,7 @@ public class AdminDashboardView {
             password.clear();
             confirmPassword.clear();
             acctType.setValue(null);
-            associatedStudent.clear();
+            associatedStudent.setValue(null);
             company.clear();
             university.clear();
             errorLabel.setText("");
@@ -181,8 +202,12 @@ public class AdminDashboardView {
 
             try {
                 Integer associatedStudentId = null;
-                if (!associatedStudent.getText().isBlank()) {
-                    associatedStudentId = Integer.parseInt(associatedStudent.getText().trim());
+                if ("Parent".equals(acctType.getValue())) {
+                    associatedStudentId = studentLabelToId.get(associatedStudent.getValue());
+                    if (associatedStudentId == null) {
+                        errorLabel.setText("Please select an associated student.");
+                        return;
+                    }
                 }
 
                 boolean created = admin.createUser(
@@ -202,8 +227,6 @@ public class AdminDashboardView {
                 } else {
                     errorLabel.setText("User creation failed.");
                 }
-            } catch (NumberFormatException ex) {
-                errorLabel.setText("Associated student ID must be numeric.");
             } catch (RuntimeException ex) {
                 errorLabel.setText(ex.getMessage());
             }

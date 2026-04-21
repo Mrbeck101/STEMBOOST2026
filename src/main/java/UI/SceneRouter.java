@@ -137,4 +137,10 @@ public class SceneRouter {
         stage.setTitle("STEMBOOST - Student Profile");
         stage.setScene(ProfileView.createReadOnly(this, studentId));
     }
+
+    public void goToStudentLimitedView(int studentId) {
+        KeyboardTtsService.getInstance().onSceneExit();
+        stage.setTitle("STEMBOOST - Student View");
+        stage.setScene(StudentDashBoardView.createLimited(this, studentId));
+    }
 }

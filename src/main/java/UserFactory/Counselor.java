@@ -38,9 +38,6 @@ public class Counselor extends User {
         return this.assignedStudents;
     }
 
-    public void addAssignedStudent(int studentID) {
-        this.assignedStudents.add(studentID);
-    }
 
     public boolean enrollAssignedStudentInModule(int studentId, int moduleId) {
         if (!this.assignedStudents.contains(studentId)) {

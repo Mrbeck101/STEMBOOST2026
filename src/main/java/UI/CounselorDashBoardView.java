@@ -1,11 +1,13 @@
 package UI;
 
+import OtherComponents.LearningModule;
 import OtherComponents.Message;
 import UserFactory.Counselor;
 import javafx.geometry.*;
 import javafx.scene.*;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import javafx.util.StringConverter;
 import java.util.HashMap;
 import java.util.List;
 
@@ -26,8 +28,9 @@ public class CounselorDashBoardView {
         Tab modulesTab = new Tab("Browse Modules", UIComponents.browseModulesTab("Browse Modules", "Open the module catalog and filter by learning path.", router));
         Tab jobsTab = new Tab("Job Programs", createJobProgramSearchContent(counselor));
         Tab inboxTab = new Tab("Inbox", UIComponents.inboxTab(counselor, router));
+        Tab contactTab = new Tab("Contact Info", UIComponents.contactInfoTab(counselor));
 
-        tabPane.getTabs().addAll(dashboardTab, studentsTab, modulesTab, jobsTab, inboxTab);
+        tabPane.getTabs().addAll(dashboardTab, studentsTab, modulesTab, jobsTab, inboxTab, contactTab);
 
         return UIComponents.buildScene(
                 UIComponents.topBar("STEMBOOST - Counselor Dashboard", counselor.getName(), router),
@@ -91,26 +94,68 @@ public class CounselorDashBoardView {
 
         Button viewBtn = new Button("View Profile");
         Button messageBtn = new Button("Send Message");
-        viewBtn.setOnAction(e -> router.goToStudentProfile(studentId));
+        viewBtn.setOnAction(e -> router.goToStudentLimitedView(studentId));
         messageBtn.setOnAction(e -> router.goToContacts());
 
         Button enrollBtn = new Button("Enroll in Module");
         enrollBtn.setOnAction(e -> {
-            TextInputDialog dialog = new TextInputDialog();
-            dialog.setTitle("Enroll Student");
-            dialog.setHeaderText("Enroll student #" + studentId + " in a module");
-            dialog.setContentText("Module ID:");
-            dialog.showAndWait().ifPresent(moduleValue -> {
-                try {
-                    int moduleId = Integer.parseInt(moduleValue.trim());
-                    boolean enrolled = counselor.enrollAssignedStudentInModule(studentId, moduleId);
-                    UIComponents.showInfo(enrolled ? "Student enrolled successfully." : "Enrollment failed.");
-                } catch (NumberFormatException ex) {
-                    UIComponents.showInfo("Please enter a valid numeric module ID.");
-                } catch (Exception ex) {
-                    UIComponents.showInfo("Failed to enroll student: " + ex.getMessage());
+            try {
+                HashMap<String, Object> studentSummary = counselor.getAccountSummary(studentId);
+                String learningPath = studentSummary != null && studentSummary.get("learningPath") instanceof String
+                        ? (String) studentSummary.get("learningPath")
+                        : null;
+
+                List<LearningModule> modules = counselor.browseModules(learningPath);
+                if (modules == null || modules.isEmpty()) {
+                    modules = counselor.browseModules("All");
                 }
-            });
+
+                if (modules == null || modules.isEmpty()) {
+                    UIComponents.showInfo("No modules are currently available for enrollment.");
+                    return;
+                }
+
+                ComboBox<LearningModule> modulePicker = new ComboBox<>();
+                modulePicker.getItems().addAll(modules);
+                modulePicker.getSelectionModel().selectFirst();
+                modulePicker.setMaxWidth(Double.MAX_VALUE);
+                modulePicker.setConverter(new StringConverter<>() {
+                    @Override public String toString(LearningModule module) {
+                        return module == null
+                                ? ""
+                                : module.getSubject() + " (ID #" + module.getModuleID() + ") - " + module.getLearningPath();
+                    }
+
+                    @Override public LearningModule fromString(String string) { return null; }
+                });
+
+                Dialog<ButtonType> dialog = new Dialog<>();
+                dialog.setTitle("Enroll Student");
+                dialog.setHeaderText("Enroll " + studentName + " in a module");
+                dialog.getDialogPane().setContent(new VBox(10,
+                        new Label("Select Module"),
+                        modulePicker
+                ));
+                ButtonType enrollType = new ButtonType("Enroll", ButtonBar.ButtonData.OK_DONE);
+                dialog.getDialogPane().getButtonTypes().addAll(enrollType, ButtonType.CANCEL);
+
+                dialog.showAndWait().ifPresent(result -> {
+                    if (result != enrollType) return;
+                    LearningModule selected = modulePicker.getValue();
+                    if (selected == null) {
+                        UIComponents.showInfo("Please select a module.");
+                        return;
+                    }
+                    try {
+                        boolean enrolled = counselor.enrollAssignedStudentInModule(studentId, selected.getModuleID());
+                        UIComponents.showInfo(enrolled ? "Student enrolled successfully." : "Enrollment failed.");
+                    } catch (Exception ex) {
+                        UIComponents.showInfo("Failed to enroll student: " + ex.getMessage());
+                    }
+                });
+            } catch (Exception ex) {
+                UIComponents.showInfo("Failed to load modules: " + ex.getMessage());
+            }
         });
 
         card.getChildren().addAll(studentLabel, new HBox(10, viewBtn, messageBtn, enrollBtn));

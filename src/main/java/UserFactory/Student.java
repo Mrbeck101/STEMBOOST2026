@@ -10,7 +10,6 @@ public class Student extends User {
     private String university;
     private List<Assessment> assessments;
     private List<LearningModule> modules;
-    private int guardian = -1;
     private String learningPath;
     private int counselorID;
 
@@ -23,13 +22,9 @@ public class Student extends User {
     }
 
      protected void initializeUser() {
-        HashMap<String,Object> profile = DB.searchAccountDB(super.getId(), "first_name, last_name, contact_info, associated_id, university, learning_path, assigned_counselor");
+        HashMap<String,Object> profile = DB.searchAccountDB(super.getId(), "first_name, last_name, contact_info, university, learning_path, assigned_counselor");
         super.setName((String) profile.get("name"));
         this.university = (String) profile.get("university");
-
-        if ((Integer) profile.get("associatedID") != 0) {
-            this.guardian = (Integer) profile.get("associatedID");
-        }
 
         if (profile.get("learningPath") != null) {
             this.learningPath = (String) profile.get("learningPath");
@@ -62,37 +57,14 @@ public class Student extends User {
         return this.modules;
     }
 
-    public void addAssessment(Assessment test) {
-        this.assessments.add(test);
-    }
-
-    public void addModule(LearningModule mod) {
-        this.modules.add(mod);
-    }
-
-    public int getGuardian() {
-        return this.guardian;
-    }
-
-    public void setGuardian(int guardian) {
-        this.guardian = guardian;
-    }
-
     public String getUniversity() {
         return this.university;
-    }
-
-    public void setUniversity(String university) {
-        this.university = university;
     }
 
     public String getLearningPath() {
         return this.learningPath;
     }
 
-    public void setLearningPath(String learningPath) {
-        this.learningPath = learningPath;
-    }
 
     private void setCounselorID() {
         Integer counselorID = DB.findAvailableCounselor();
@@ -145,5 +117,13 @@ public class Student extends User {
 
     public boolean requestWorkProgram(String details){
         return DB.notifyCounselorOfJobProgramRequest(super.getId(), details);
+    }
+
+    public boolean updateUniversity(String university) {
+        boolean updated = DB.updateStudentUniversity(super.getId(), university);
+        if (updated) {
+            this.university = university;
+        }
+        return updated;
     }
 }

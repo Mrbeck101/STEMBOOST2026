@@ -32,7 +32,8 @@ public class EmployerDashBoardView {
                 new Tab("Dashboard", createDashboardContent(employer)),
                 new Tab("Job Programs", createJobsContent(employer, router)),
                 new Tab("Browse Modules", UIComponents.browseModulesTab("Browse Modules", "Review all available learning modules and filter by learning path.", router)),
-                new Tab("Inbox", UIComponents.inboxTab(employer, router))
+                new Tab("Inbox", UIComponents.inboxTab(employer, router)),
+                new Tab("Contact Info", UIComponents.contactInfoTab(employer))
         );
 
         return UIComponents.buildScene(

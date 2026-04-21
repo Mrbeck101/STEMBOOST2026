@@ -1,6 +1,7 @@
 package UI;
 
 import UserFactory.Student;
+import UserFactory.User;
 import OtherComponents.LearningModule;
 import OtherComponents.Assessment;
 import Services.KeyboardTtsService;
@@ -34,12 +35,14 @@ public class StudentDashBoardView {
         Tab modulesTab = new Tab("Learning Modules", createModulesContent(student, router));
         Tab assessmentsTab = new Tab("Assessments", createAssessmentsContent(student, router));
         Tab inboxTab = new Tab("Inbox", createInboxContent(student, router, inboxViewButtonRef));
+        Tab contactTab = new Tab("Contact Info", createContactInfoContent(student));
 
         tabPane.getTabs().addAll(
                 dashboardTab,
                 modulesTab,
                 assessmentsTab,
-                inboxTab
+                inboxTab,
+                contactTab
         );
 
         // Student top bar includes university subtitle
@@ -377,5 +380,75 @@ public class StudentDashBoardView {
                 KeyboardTtsService.getInstance().speakNow(message);
             }
         });
+    }
+
+    /** Limited view for university/counselor/educator to see a student's dashboard + modules only. */
+    public static Scene createLimited(SceneRouter router, int studentId) {
+        User viewer = UserContext.getInstance().getCurrentUser();
+        Student student = new Student(studentId);
+
+        TabPane tabPane = new TabPane();
+        tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        tabPane.getTabs().addAll(
+                new Tab("Dashboard", createDashboardContent(student)),
+                new Tab("Learning Modules", createModulesContent(student, router))
+        );
+
+        Button backBtn = new Button("← Back");
+        backBtn.setOnAction(e -> router.goToCurrentUserDashboard());
+        backBtn.setStyle("-fx-font-size: 12;");
+
+        HBox topBar = UIComponents.topBarWithSubtitle(
+                "STEMBOOST - Student: " + student.getName(),
+                student.getName(),
+                "University: " + student.getUniversity(),
+                router,
+                backBtn
+        );
+
+        return UIComponents.buildScene(topBar, tabPane);
+    }
+
+    private static VBox createContactInfoContent(Student student) {
+        VBox content = UIComponents.contentBox(15);
+        content.getChildren().add(UIComponents.sectionTitle("Update Contact Information"));
+
+        TextField emailField = new TextField(student.getEmail() == null ? "" : student.getEmail());
+        TextField phoneField = new TextField(student.getPhone() == null ? "" : student.getPhone());
+        TextArea addressField = new TextArea(student.getAddress() == null ? "" : student.getAddress());
+        addressField.setPrefRowCount(3);
+        TextField universityField = new TextField(student.getUniversity() == null ? "" : student.getUniversity());
+
+        Button saveBtn = new Button("Save Changes");
+        saveBtn.setOnAction(e -> {
+            try {
+                boolean contactUpdated = student.updateContactInformation(
+                        emailField.getText().trim(),
+                        phoneField.getText().trim(),
+                        addressField.getText().trim()
+                );
+                boolean uniUpdated = student.updateUniversity(universityField.getText().trim());
+                if (contactUpdated || uniUpdated) {
+                    UIComponents.showInfo("Contact information updated successfully.");
+                } else {
+                    UIComponents.showInfo("No changes were saved.");
+                }
+            } catch (Exception ex) {
+                UIComponents.showInfo("Update failed: " + ex.getMessage());
+            }
+        });
+
+        VBox form = new VBox(10,
+                new Label("Email"), emailField,
+                new Label("Phone"), phoneField,
+                new Label("Address"), addressField,
+                new Label("University"), universityField,
+                saveBtn
+        );
+        form.setPadding(new Insets(10));
+        form.setStyle("-fx-background-color: #161B22; -fx-border-color: #30363D; -fx-border-radius: 6;");
+
+        content.getChildren().add(form);
+        return content;
     }
 }

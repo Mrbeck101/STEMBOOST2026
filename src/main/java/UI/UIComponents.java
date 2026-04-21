@@ -217,6 +217,42 @@ public final class UIComponents {
 
     // ── Alerts ─────────────────────────────────────────────────────────────────
 
+    /** Generic contact info tab for any user role (email, phone, address). */
+    public static VBox contactInfoTab(User user) {
+        VBox content = contentBox(15);
+        content.getChildren().add(sectionTitle("Update Contact Information"));
+
+        TextField emailField = new TextField(user.getEmail() == null ? "" : user.getEmail());
+        TextField phoneField = new TextField(user.getPhone() == null ? "" : user.getPhone());
+        TextArea addressField = new TextArea(user.getAddress() == null ? "" : user.getAddress());
+        addressField.setPrefRowCount(3);
+
+        Button saveBtn = new Button("Save Changes");
+        saveBtn.setOnAction(e -> {
+            try {
+                boolean updated = user.updateContactInformation(
+                        emailField.getText().trim(),
+                        phoneField.getText().trim(),
+                        addressField.getText().trim()
+                );
+                showInfo(updated ? "Contact information updated successfully." : "No changes were saved.");
+            } catch (Exception ex) {
+                showInfo("Update failed: " + ex.getMessage());
+            }
+        });
+
+        VBox form = new VBox(10,
+                new Label("Email"), emailField,
+                new Label("Phone"), phoneField,
+                new Label("Address"), addressField,
+                saveBtn
+        );
+        form.setPadding(new Insets(10));
+        form.setStyle("-fx-background-color: #161B22; -fx-border-color: #30363D; -fx-border-radius: 6;");
+        content.getChildren().add(form);
+        return content;
+    }
+
     public static void showInfo(String message) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setHeaderText(null);
@@ -256,7 +292,6 @@ public final class UIComponents {
 
     private static String buildDialogNarration(Dialog<?> dialog) {
         StringBuilder text = new StringBuilder("Popup window. ");
-        appendIfPresent(text, dialog.getTitle());
         appendIfPresent(text, dialog.getHeaderText());
         appendIfPresent(text, dialog.getContentText());
 

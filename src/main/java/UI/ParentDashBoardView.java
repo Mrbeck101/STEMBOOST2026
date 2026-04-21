@@ -23,7 +23,8 @@ public class ParentDashBoardView {
                 new Tab("Dashboard", createDashboardContent(parent)),
                 new Tab("My Children", createChildrenContent(parent, router)),
                 new Tab("Report Cards", createReportCardsContent(parent, router)),
-                new Tab("Inbox", UIComponents.inboxTab(parent, router))
+                new Tab("Inbox", UIComponents.inboxTab(parent, router)),
+                new Tab("Contact Info", UIComponents.contactInfoTab(parent))
         );
 
         return UIComponents.buildScene(
