@@ -15,6 +15,7 @@ public class RegisterView {
 
     //private static final String INTRO_TTS = "Welcome To Stem Boost, a learning assistance app for the visually impaired to learn more about stem. To disable dictation at any time you can press the f1 key.";
     private static final String REGISTER_PAGE_TTS = "You are currently on the register page. Complete the form fields to create your account.";
+    private static final String EMAIL_PATTERN = "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$";
 
     public static Scene create(SceneRouter router) {
 
@@ -142,9 +143,15 @@ public class RegisterView {
 
             if (success) {
                 error.setText("Account Created");
-                tts.speakNow("Account Created", router::goToLogin);
+                UIComponents.showAlert("Registration Successful", "Successfully registered.");
+                router.goToLogin();
             } else {
-                error.setText("Registration failed. Please review your information and try again.");
+                String emailText = email.getText() == null ? "" : email.getText().trim();
+                if (AuthService.emailAlreadyRegistered(emailText)) {
+                    error.setText("An account with this email already exists.");
+                } else {
+                    error.setText("Registration failed. Please review your information and try again.");
+                }
                 tts.speakNow(error.getText());
                 error.requestFocus();
             }
@@ -297,10 +304,13 @@ public class RegisterView {
         if (email.getText() == null || email.getText().trim().isEmpty()) {
             return "Email is required";
         }
-        if (password.getText() == null || password.getText().isEmpty()) {
+        if (!email.getText().trim().matches(EMAIL_PATTERN)) {
+            return "Please enter a valid email address";
+        }
+        if (password.getText() == null || password.getText().trim().isEmpty()) {
             return "Password is required";
         }
-        if (confirm.getText() == null || confirm.getText().isEmpty()) {
+        if (confirm.getText() == null || confirm.getText().trim().isEmpty()) {
             return "Please confirm your password";
         }
         if (!password.getText().equals(confirm.getText())) {
@@ -309,3 +319,4 @@ public class RegisterView {
         return null;
     }
 }
+

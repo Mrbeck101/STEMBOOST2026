@@ -18,6 +18,14 @@ public class AuthService {
         return result;
     }
 
+    public static boolean emailAlreadyRegistered(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        dbConnector DB = dbConnector.getInstance();
+        return DB.userEmailExists(email.trim());
+    }
+
     public static boolean register(String email, String password, String fname, String lname, String acctType) {
         return register(email, password, fname, lname, acctType, "");
     }

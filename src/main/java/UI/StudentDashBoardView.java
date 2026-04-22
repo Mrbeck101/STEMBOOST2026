@@ -45,9 +45,12 @@ public class StudentDashBoardView {
                 contactTab
         );
 
-        // Student top bar includes university subtitle
-        HBox topBar = UIComponents.topBarWithSubtitle(
-                "STEMBOOST - Student Dashboard", student.getName(), "University: " + student.getUniversity(), router);
+        // Student top bar includes university subtitle only when set
+        String university = student.getUniversity();
+        HBox topBar = hasUniversity(university)
+                ? UIComponents.topBarWithSubtitle(
+                "STEMBOOST - Student Dashboard", student.getName(), "University: " + university.trim(), router)
+                : UIComponents.topBar("STEMBOOST - Student Dashboard", student.getName(), router);
 
         Scene scene = UIComponents.buildScene(topBar, tabPane);
 
@@ -398,10 +401,18 @@ public class StudentDashBoardView {
         backBtn.setOnAction(e -> router.goToCurrentUserDashboard());
         backBtn.setStyle("-fx-font-size: 12;");
 
-        HBox topBar = UIComponents.topBarWithSubtitle(
+        String university = student.getUniversity();
+        HBox topBar = hasUniversity(university)
+                ? UIComponents.topBarWithSubtitle(
                 "STEMBOOST - Student: " + student.getName(),
                 student.getName(),
-                "University: " + student.getUniversity(),
+                "University: " + university.trim(),
+                router,
+                backBtn
+        )
+                : UIComponents.topBar(
+                "STEMBOOST - Student: " + student.getName(),
+                student.getName(),
                 router,
                 backBtn
         );
@@ -450,5 +461,13 @@ public class StudentDashBoardView {
 
         content.getChildren().add(form);
         return content;
+    }
+
+    private static boolean hasUniversity(String university) {
+        if (university == null) {
+            return false;
+        }
+        String cleaned = university.trim();
+        return !cleaned.isEmpty() && !"unknown".equalsIgnoreCase(cleaned);
     }
 }

@@ -1,5 +1,6 @@
 package UI;
 
+import Services.KeyboardTtsService;
 import UserFactory.Student;
 import atlantafx.base.theme.PrimerDark;
 import javafx.geometry.*;
@@ -57,6 +58,25 @@ public class LearningPathSelectionView {
         root.setCenter(tabPane);
 
         Scene scene = new Scene(root, 1400, 900);
+
+        KeyboardTtsService.getInstance().bindScene(
+                scene,
+                KeyboardTtsService.AccessMode.STUDENT_ONLY,
+                () -> new KeyboardTtsService.ReadingContent(buildManualSelectionNarration()),
+                tabPane::requestFocus
+        );
+
+        tabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, selectedTab) -> {
+            if (selectedTab == null) {
+                return;
+            }
+            if (selectedTab == manualTab) {
+                KeyboardTtsService.getInstance().speakNow(buildManualSelectionNarration());
+            } else if (selectedTab == questionnaireTab) {
+                KeyboardTtsService.getInstance().speakNow(buildQuestionnaireNarration());
+            }
+        });
+
         return scene;
     }
 
@@ -304,6 +324,24 @@ public class LearningPathSelectionView {
         }
 
         return recommendedPath;
+    }
+
+    private static String buildManualSelectionNarration() {
+        return "Select your learning path. "
+                + "You are on manual selection. "
+                + "Choose one learning path that best matches your interests and goals, then press confirm selection. "
+                + "Available paths are Electrical Engineering, Software Engineering, Information Technology, "
+                + "Cybersecurity, Computer Engineering, and Artificial Intelligence.";
+    }
+
+    private static String buildQuestionnaireNarration() {
+        return "You are on the learning path questionnaire. "
+                + "Answer all four questions to get a recommended path. "
+                + "Question one, what interests you most. "
+                + "Question two, which skill would you like to develop first. "
+                + "Question three, what type of projects excite you. "
+                + "Question four, where do you see yourself in five years. "
+                + "After answering all questions, press submit questionnaire.";
     }
 
     private static void showAlert(String title, String message) {

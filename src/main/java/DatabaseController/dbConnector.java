@@ -420,6 +420,21 @@ public class dbConnector {
         }
     }
 
+    public boolean userEmailExists(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM users WHERE email = ? LIMIT 1")) {
+            ps.setString(1, email.trim());
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to check user email", e);
+        }
+    }
+
     public Pair<Integer, String> searchUserDB(String email, String password) {
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(
